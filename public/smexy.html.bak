@@ -413,17 +413,6 @@
             transform: scale(1.05);
         }
         
-        .tool-button.active {
-            background-color: var(--primary-color);
-            color: white;
-            box-shadow: 0 2px 6px rgba(41, 152, 255, 0.4);
-        }
-        
-        .tool-button.active:hover {
-            background-color: var(--primary-dark);
-            color: white;
-        }
-        
         /* Timeline styles */
         .timeline-container {
             background-color: white;
@@ -951,9 +940,6 @@
                     <div class="tool-button" id="center-map" title="Center Map">
                         <i class="fas fa-crosshairs"></i>
                     </div>
-                    <div class="tool-button active" id="follow-dot" title="Follow Dot">
-                        <i class="fas fa-location-arrow"></i>
-                    </div>
                 </div>
             </div>
         </div>
@@ -1263,12 +1249,6 @@
                 }
             });
             
-            // Follow dot button
-            document.getElementById('follow-dot').addEventListener('click', function() {
-                this.classList.toggle('active');
-                window.map.followDot = this.classList.contains('active');
-            });
-            
             // Set up visualization controls
             document.getElementById('show-radius').addEventListener('change', () => {
                 if (window.map.gpsData.length > 0) {
@@ -1318,38 +1298,25 @@
         
         // Helper function to create bounds from GPS data
         function getBoundsFromGPSData(gpsData) {
-            if (!gpsData || gpsData.length === 0) {
-                console.warn("Empty GPS data provided to getBoundsFromGPSData");
-                return [[0, 0], [0, 0]]; // Default bounds
-            }
-            
             let minLng = Infinity;
             let maxLng = -Infinity;
             let minLat = Infinity;
             let maxLat = -Infinity;
             
-            // Find min/max coordinates
             gpsData.forEach(point => {
-                if (point && typeof point.longitude === 'number' && typeof point.latitude === 'number') {
-                    minLng = Math.min(minLng, point.longitude);
-                    maxLng = Math.max(maxLng, point.longitude);
-                    minLat = Math.min(minLat, point.latitude);
-                    maxLat = Math.max(maxLat, point.latitude);
-                }
+                minLng = Math.min(minLng, point.longitude);
+                maxLng = Math.max(maxLng, point.longitude);
+                minLat = Math.min(minLat, point.latitude);
+                maxLat = Math.max(maxLat, point.latitude);
             });
             
-            // Add padding but ensure we stay within valid lat/lng ranges
+            // Add some padding
             const lngPadding = (maxLng - minLng) * 0.1;
             const latPadding = (maxLat - minLat) * 0.1;
             
-            // Ensure latitude stays within -90 to 90 range
-            const paddedMinLat = Math.max(minLat - latPadding, -90);
-            const paddedMaxLat = Math.min(maxLat + latPadding, 90);
-            
-            // Return southwest and northeast corners
             return [
-                [minLng - lngPadding, paddedMinLat],
-                [maxLng + lngPadding, paddedMaxLat]
+                [minLng - lngPadding, minLat - latPadding],
+                [maxLng + lngPadding, maxLat + latPadding]
             ];
         }
 
@@ -1789,32 +1756,7 @@
             
             // Add event listener for the Project 3 button (triplog.csv)
             document.getElementById('load-triplog').addEventListener('click', () => {
-                // Disable follow feature
-                window.map.followDot = false;
-                document.getElementById('follow-dot').classList.remove('active');
-
-                // Load triplog data with Promise handling
-                loadTriplogData()
-                    .then(gpsData => {
-                        // After data is loaded successfully, THEN fit bounds
-                        if (gpsData && gpsData.length > 0) {
-                            const bounds = getBoundsFromGPSData(gpsData);
-                            window.map.maplibreMap.fitBounds(bounds, { padding: 50 });
-                            
-                            // Add event listener for moveend
-                            window.map.maplibreMap.once('moveend', () => {
-                                // Log message after panning is complete
-                                console.log("finished panning out to show all points");
-
-                                // Enable follow feature after the map has finished panning
-                                document.getElementById('follow-dot').classList.add('active');
-                                window.map.followDot = true;
-                            });
-                        }
-                    })
-                    .catch(error => {
-                        console.error("Error in loading triplog data:", error);
-                    });
+                loadTriplogData();
             });
             
             // Add event listener for the Zybooks button
@@ -1887,7 +1829,7 @@
             // Check if map is initialized
             if (!window.map || !window.map.deckgl) {
                 showToast('Map not yet initialized. Please try again in a moment.', 'error');
-                return Promise.reject('Map not initialized');
+                return;
             }
             
             // Show loading overlay
@@ -1895,74 +1837,82 @@
             
             console.log("Attempting to load triplog.csv...");
             
-            // Return a Promise
-            return new Promise((resolve, reject) => {
-                // Fetch the triplog.csv file
-                fetch('triplog.csv')
-                    .then(response => {
-                        console.log("Fetch response status:", response.status);
-                        if (!response.ok) {
-                            throw new Error(`Failed to load triplog.csv - Status: ${response.status}`);
-                        }
-                        return response.text();
-                    })
-                    .then(csvText => {
-                        console.log('CSV data loaded, length:', csvText.length);
-                        console.log('First few characters:', csvText.substring(0, 100) + '...'); // Log a snippet of the loaded data
-                        
-                        // Set the CSV text to the textarea
-                        document.getElementById('csv-textarea').value = csvText;
-                        
-                        // Parse the GPS data
-                        const gpsData = parseGPSData();
-                        if (!gpsData) {
-                            throw new Error('Failed to parse triplog.csv data');
-                        }
-                        
-                        console.log('Parsed GPS data:', gpsData.length + ' points loaded');
-                        
-                        // Store the data globally
-                        window.map.gpsData = gpsData;
-                        window.map.currentTimeIndex = 0;
-                        
-                        // Update layers with new data
+            // Fetch the triplog.csv file
+            fetch('triplog.csv')
+                .then(response => {
+                    console.log("Fetch response status:", response.status);
+                    if (!response.ok) {
+                        throw new Error(`Failed to load triplog.csv - Status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(csvText => {
+                    console.log('CSV data loaded, length:', csvText.length);
+                    console.log('First few characters:', csvText.substring(0, 100) + '...'); // Log a snippet of the loaded data
+                    
+                    // Set the CSV text to the textarea
+                    document.getElementById('csv-textarea').value = csvText;
+                    
+                    // Parse the GPS data
+                    const gpsData = parseGPSData();
+                    if (!gpsData) {
+                        throw new Error('Failed to parse triplog.csv data');
+                    }
+                    
+                    console.log('Parsed GPS data:', gpsData.length + ' points loaded');
+                    
+                    // Store the data globally
+                    window.map.gpsData = gpsData;
+                    window.map.currentTimeIndex = 0;
+                    
+                    // Update layers with new data
+                    updateLayers(window.map.deckgl, gpsData);
+                    
+                    // Center map on the data
+                    const bounds = getBoundsFromGPSData(gpsData);
+                    window.map.maplibreMap.fitBounds(bounds, { padding: 50 });
+                    
+                    // Update journey summary
+                    updateJourneySummary(gpsData);
+                    
+                    // Update timeline slider max value
+                    updateTimelineSlider(gpsData);
+                    
+                    // Hide loading overlay
+                    document.getElementById('loading-overlay').classList.remove('active');
+                    
+                    // Force a redraw of the layers to ensure visibility with a slight delay
+                    // This helps ensure all marker circles are visible
+                    setTimeout(() => {
+                        console.log('Redrawing layers to ensure marker visibility');
                         updateLayers(window.map.deckgl, gpsData);
                         
-                        // Update journey summary
-                        updateJourneySummary(gpsData);
-                        
-                        // Update timeline slider max value
-                        updateTimelineSlider(gpsData);
-                        
-                        // Hide loading overlay
-                        document.getElementById('loading-overlay').classList.remove('active');
-                        
-                        // Force a redraw of the layers to ensure visibility with a slight delay
-                        // This helps ensure all marker circles are visible
-                        setTimeout(() => {
-                            console.log('Redrawing layers to ensure marker visibility');
-                            updateLayers(window.map.deckgl, gpsData);
-                            
-                            // Check DeckGL state
-                            setTimeout(checkDeckGLState, 250);
-                        }, 500);
-                        
-                        showToast(`Loaded ${gpsData.length} points from triplog.csv`, 'success');
-                        
-                        // Resolve the promise with the GPS data
-                        resolve(gpsData);
-                    })
-                    .catch(error => {
-                        // Hide loading overlay
-                        document.getElementById('loading-overlay').classList.remove('active');
-                        
-                        console.error('Error loading triplog.csv:', error);
-                        showToast(`Error: ${error.message}`, 'error');
-                        
-                        // Reject the promise
-                        reject(error);
-                    });
-            });
+                        // Check DeckGL state
+                        setTimeout(checkDeckGLState, 250);
+                    }, 500);
+                    
+                    showToast(`Loaded ${gpsData.length} points from triplog.csv`, 'success');
+                })
+                .catch(error => {
+                    // Hide loading overlay
+                    document.getElementById('loading-overlay').classList.remove('active');
+                    
+                    console.error('Error loading triplog.csv:', error);
+                    showToast(`Error: ${error.message}`, 'error');
+                    
+                    // Try to check if the file exists by sending a HEAD request
+                    fetch('triplog.csv', { method: 'HEAD' })
+                        .then(response => {
+                            console.log('HEAD check status:', response.status);
+                            if (!response.ok) {
+                                console.error('triplog.csv does not exist or is not accessible');
+                                showToast("Error: triplog.csv file does not exist", 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Network error checking for triplog.csv:', err);
+                        });
+                });
         }
         
         // Setup timeline controls

@@ -8,6 +8,10 @@
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
+    <!-- Three.js library -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    
     <!-- Load deck.gl correctly with specific versions -->
     <script src="https://unpkg.com/@babel/polyfill@7.12.1/dist/polyfill.min.js"></script>
     <script src="https://unpkg.com/deck.gl@8.8.27/dist.min.js"></script>
@@ -413,17 +417,6 @@
             transform: scale(1.05);
         }
         
-        .tool-button.active {
-            background-color: var(--primary-color);
-            color: white;
-            box-shadow: 0 2px 6px rgba(41, 152, 255, 0.4);
-        }
-        
-        .tool-button.active:hover {
-            background-color: var(--primary-dark);
-            color: white;
-        }
-        
         /* Timeline styles */
         .timeline-container {
             background-color: white;
@@ -730,6 +723,31 @@
             transform: rotate(180deg);
             color: var(--primary-color);
         }
+        
+        /* Tesla model container styling */
+        .tesla-model-marker {
+            z-index: 1000 !important; /* Make sure the car is on top of other elements */
+            pointer-events: none;
+        }
+        
+        /* Car model container styling */
+        .car-model-container {
+            width: 40px;
+            height: 40px;
+            position: relative;
+            overflow: visible;
+            z-index: 1000 !important;
+            pointer-events: none;
+        }
+        
+        .model-canvas {
+            position: absolute;
+            top: -20px;
+            left: -20px;
+            width: 80px !important;
+            height: 80px !important;
+            pointer-events: none;
+        }
 
         /* Loading overlay styles */
         .loading-overlay {
@@ -798,6 +816,17 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
         
+        /* Three.js car container */
+        .car-model-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 9999; /* Highest z-index to ensure it's on top of everything */
+            transform-origin: center center;
+            /* No width/height restrictions to prevent positioning issues */
+        }
+        
         /* Point pulse animation */
         @keyframes pointPulse {
             0% { transform: scale(1); opacity: 1; }
@@ -834,6 +863,21 @@
             height: 16px;
             box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
             animation: pointPulse 1.5s infinite ease-out;
+        }
+        
+        /* Three.js canvas styling */
+        .model-canvas {
+            position: absolute;
+            width: 100px !important;
+            height: 100px !important;
+            /* Transform is now handled in JS for precise positioning */
+            pointer-events: none;
+        }
+        
+        /* Make renderer canvas properly positioned */
+        #car-container canvas {
+            position: absolute !important;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -945,14 +989,16 @@
             <!-- Map Container -->
             <div class="map-container">
                 <div id="map"></div>
+                <!-- Car container will hold the Three.js car model -->
+                <div id="car-container" class="car-model-wrapper"></div>
                     
                 <!-- Map Tools -->
                 <div class="map-tools">
                     <div class="tool-button" id="center-map" title="Center Map">
                         <i class="fas fa-crosshairs"></i>
                     </div>
-                    <div class="tool-button active" id="follow-dot" title="Follow Dot">
-                        <i class="fas fa-location-arrow"></i>
+                    <div class="tool-button" id="toggle-heatmap" title="Toggle Heatmap">
+                        <i class="fas fa-fire"></i>
                     </div>
                 </div>
             </div>
@@ -1140,15 +1186,20 @@
                 currentTimeIndex: 0,
                 animationFrameId: null,
                 playbackSpeed: 1,
-                followDot: true,
+                threeJsScene: null,       // Will hold the Three.js scene
+                carModel: null,           // Will hold the car model
+                carContainer: document.getElementById('car-container')
             };
+            
+            // Initialize Three.js for car model visualization
+            initThreeJsCarModel();
             
             // Add map bearing change listener in the map load event 
             maplibreMap.on('load', () => {
                 console.log("MapLibre map loaded with deck.gl overlay");
                 document.getElementById('loading-overlay').classList.remove('active');
                 
-                // Update current position on map move
+                // Update car on map move
                 maplibreMap.on('move', () => {
                     // Only update if we have GPS data and a current position index
                     if (window.map.gpsData && window.map.gpsData.length > 0) {
@@ -1192,6 +1243,9 @@
                                 p2.longitude - p1.longitude
                             );
                         }
+                        
+                        // Update the car position with the current coordinates and heading
+                        updateCarPosition(currentPosition[0], currentPosition[1], currentHeading);
                     }
                 });
                 
@@ -1223,11 +1277,316 @@
                                 p2.longitude - p1.longitude
                             );
                         }
+                        
+                        // Update only rotation when map bearing changes
+                        updateCarModelRotation(currentHeading);
                     }
                 });
             });
         });
+        
+        /* --- Begin Three.js Car Model Logic --- */
+        function initThreeJsCarModel() {
+            const scene = new THREE.Scene();
+            // Change camera to look down at the car from above
+            const camera = new THREE.OrthographicCamera(-3, 3, 3, -3, 0.1, 1000);
+            // Position camera directly above the car looking down
+            camera.position.set(0, 15, 0);
+            camera.lookAt(0, 0, 0);
             
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(120, 120); // Slightly larger size for better visibility
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setClearColor(0x000000, 0); // Transparent background
+            
+            // Check if car container exists, create if not
+            let container = document.getElementById('car-container');
+            if (!container) {
+                console.log("Car container not found, creating it");
+                container = document.createElement('div');
+                container.id = 'car-container';
+                container.className = 'car-model-wrapper';
+                
+                // Get map container and append the car container to it
+                const mapContainer = document.querySelector('.map-container');
+                if (mapContainer) {
+                    mapContainer.appendChild(container);
+                } else {
+                    // If map container not found, append to body as fallback
+                    document.body.appendChild(container);
+                    console.warn("Map container not found, appending car container to body");
+                }
+            }
+            
+            container.innerHTML = "";
+            container.appendChild(renderer.domElement);
+            
+            // Ensure the container and canvas have proper z-index
+            container.style.zIndex = '9999';
+            renderer.domElement.style.zIndex = '9999';
+            renderer.domElement.style.position = 'absolute';
+            renderer.domElement.style.pointerEvents = 'none';
+            
+            // Add lights
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const keyLight = new THREE.DirectionalLight(0xffffff, 0.7);
+            keyLight.position.set(5, 15, 10);
+            scene.add(keyLight);
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+            fillLight.position.set(-5, 10, -5);
+            scene.add(fillLight);
+            
+            console.log("Loading Tesla Model 3...");
+            showToast("Loading 3D car model...", "info");
+            
+            // Create a fallback car model that will be used if loading fails
+            function createFallbackCarModel() {
+                // Create a simple car shape using basic geometries
+                const carGroup = new THREE.Group();
+                
+                // Car body - main body
+                const bodyGeometry = new THREE.BoxGeometry(2, 0.5, 4);
+                const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 }); // Dark gray
+                const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                body.position.y = 0.25;
+                carGroup.add(body);
+                
+                // Car top/cabin
+                const cabinGeometry = new THREE.BoxGeometry(1.8, 0.5, 2.5);
+                const cabinMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
+                const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
+                cabin.position.y = 0.75;
+                cabin.position.z = -0.2;
+                carGroup.add(cabin);
+                
+                // Windows
+                const windowMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0x8acdff,
+                    transparent: true,
+                    opacity: 0.7
+                });
+                
+                // Windshield
+                const windshieldGeometry = new THREE.PlaneGeometry(1.7, 0.6);
+                const windshield = new THREE.Mesh(windshieldGeometry, windowMaterial);
+                windshield.rotation.x = -Math.PI / 4;
+                windshield.position.set(0, 0.8, 0.8);
+                carGroup.add(windshield);
+                
+                // Wheels
+                const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.2, 16);
+                const wheelMaterial = new THREE.MeshPhongMaterial({ color: 0x222222 }); // Black
+                
+                // Create 4 wheels and position them
+                const wheelPositions = [
+                    { x: -1, y: 0, z: 1.3 },  // Front Left
+                    { x: 1, y: 0, z: 1.3 },   // Front Right
+                    { x: -1, y: 0, z: -1.3 }, // Rear Left
+                    { x: 1, y: 0, z: -1.3 }   // Rear Right
+                ];
+                
+                wheelPositions.forEach(pos => {
+                    const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+                    wheel.position.set(pos.x, pos.y, pos.z);
+                    wheel.rotation.z = Math.PI / 2; // Rotate to make the wheel face outward
+                    carGroup.add(wheel);
+                });
+                
+                // Headlights
+                const headlightGeometry = new THREE.BoxGeometry(0.4, 0.1, 0.1);
+                const headlightMaterial = new THREE.MeshPhongMaterial({ 
+                    color: 0xffffcc,
+                    emissive: 0xffffcc,
+                    emissiveIntensity: 0.5
+                });
+                
+                const leftHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+                leftHeadlight.position.set(-0.7, 0.3, 2);
+                carGroup.add(leftHeadlight);
+                
+                const rightHeadlight = new THREE.Mesh(headlightGeometry, headlightMaterial);
+                rightHeadlight.position.set(0.7, 0.3, 2);
+                carGroup.add(rightHeadlight);
+                
+                // Scale down the entire car
+                carGroup.scale.set(0.5, 0.5, 0.5);
+                
+                // Ensure car is properly oriented for top-down view
+                carGroup.rotation.x = -Math.PI/2; // Rotate to make top visible from above
+                
+                // Return the completed car model
+                return carGroup;
+            }
+            
+            // Use the GLTFLoader to load the model
+            const loader = new THREE.GLTFLoader();
+            
+            // Try different model paths
+            const modelPaths = [
+                'models/tesla_black/source/tesla_2018_model_3_black/scene.gltf',
+                'models/tesla_black/scene.gltf',
+                'textures/model.glb'
+            ];
+            
+            // Try to load each model path in sequence
+            let currentPathIndex = 0;
+            
+            function tryLoadModel() {
+                if (currentPathIndex >= modelPaths.length) {
+                    // We've tried all paths, use fallback model
+                    console.log("Using fallback car model");
+                    const fallbackModel = createFallbackCarModel();
+                    scene.add(fallbackModel);
+                    window.map.carModel = fallbackModel;
+                    showToast("Using basic car model", "info");
+                    return;
+                }
+                
+                const modelPath = modelPaths[currentPathIndex];
+                console.log(`Trying to load model from: ${modelPath}`);
+                
+                loader.load(modelPath, 
+                    // Success callback
+                    (gltf) => {
+                        console.log(`Model loaded successfully from ${modelPath}`);
+                        const model = gltf.scene;
+                        
+                        // Orient model for top-down view
+                        model.scale.set(0.010, 0.010, 0.010);
+                        model.position.set(0, -0.25, 0);
+                        model.rotation.x = -Math.PI/2; // Align with ground plane
+                        model.rotation.y = Math.PI; // Initial facing direction
+                        
+                        // Add the model to the scene
+                        scene.add(model);
+                        window.map.carModel = model;
+                        
+                        // Make the car black and improve material settings
+                        model.traverse(node => {
+                            if (node.isMesh) {
+                                // Set black color for all car body parts
+                                if (node.material) {
+                                    // Check if this is a part that should remain transparent (glass)
+                                    const isGlass = node.name.toLowerCase().includes('glass') || 
+                                                   node.name.toLowerCase().includes('window');
+                                    
+                                    // For most car parts, set to exact black color
+                                    if (!isGlass) {
+                                        // Set exact color #242424 (36, 36, 36)
+                                        node.material.color.setRGB(
+                                            36/255,
+                                            36/255,
+                                            36/255
+                                        );
+                                    }
+                                    
+                                    // Improve material quality
+                                    node.material.needsUpdate = true;
+                                }
+                            }
+                        });
+                        
+                        console.log(`Car model loaded and set to black`);
+                        showToast("3D car model loaded successfully", "success");
+                    }, 
+                    // Progress callback
+                    (xhr) => {
+                        if (xhr.lengthComputable) {
+                            const percentComplete = Math.round(xhr.loaded / xhr.total * 100);
+                            console.log(`Model loading progress: ${percentComplete}%`);
+                        } else {
+                            console.log(`Model loading in progress: ${xhr.loaded} bytes loaded`);
+                        }
+                    }, 
+                    // Error callback
+                    (error) => {
+                        console.error(`Error loading model from ${modelPath}:`, error);
+                        console.error(`Error details:`, error.message);
+                        
+                        // Log additional info about the attempted file
+                        fetch(modelPath, { method: 'HEAD' })
+                            .then(response => {
+                                console.log(`File check for ${modelPath}: ${response.status} ${response.statusText}`);
+                            })
+                            .catch(err => {
+                                console.error(`Network error checking for ${modelPath}:`, err);
+                            });
+                        
+                        // Try next path
+                        currentPathIndex++;
+                        tryLoadModel();
+                    }
+                );
+            }
+            
+            // Start trying to load models
+            tryLoadModel();
+            
+            // Set up animation loop
+            window.map.threeJsScene = { scene, camera, renderer };
+            (function animate() {
+                requestAnimationFrame(animate);
+                renderer.render(scene, camera);
+            })();
+        }
+
+        // Modify updateCarModelRotation to align with map orientation
+        function updateCarModelRotation(headingRadians) {
+            if (window.map.carModel) {
+                // Calculate map's bearing to adjust car orientation accordingly
+                const mapBearing = window.map.maplibreMap.getBearing() * Math.PI / 180;
+                
+                // Apply both map rotation and heading to the car
+                // The car should face the direction of travel relative to the map orientation
+                window.map.carModel.rotation.z = Math.PI - headingRadians - mapBearing;
+                
+                console.log(`Car rotation updated: heading=${headingRadians.toFixed(2)}, map=${mapBearing.toFixed(2)}`);
+            }
+        }
+        /* --- End Three.js Car Model Logic --- */
+        
+        // Function to update car position and orientation
+        function updateCarPosition(longitude, latitude, heading) {
+            if (!window.map.carModel || !window.map.threeJsScene) {
+                console.warn("Car model or Three.js scene not initialized for position update");
+                return;
+            }
+            
+            // Get the pixel coordinates for the given longitude/latitude
+            const position = window.map.maplibreMap.project([longitude, latitude]);
+            
+            // Position the car container at these coordinates
+            const container = document.getElementById('car-container');
+            if (!container) {
+                console.warn("Car container element not found");
+                return;
+            }
+            
+            // Set the exact center of the container to the position point
+            const canvas = container.querySelector('canvas');
+            if (canvas) {
+                const canvasWidth = canvas.offsetWidth;
+                const canvasHeight = canvas.offsetHeight;
+                
+                // Position the canvas so its center is exactly at the map position
+                canvas.style.left = `${position.x - canvasWidth/2}px`;
+                canvas.style.top = `${position.y - canvasHeight/2}px`;
+                
+                // Apply transform to ensure proper stacking context
+                canvas.style.transform = 'translate3d(0, 0, 0)';
+                canvas.style.zIndex = '9999';
+            } else {
+                // Fallback positioning with the container
+                container.style.left = `${position.x}px`;
+                container.style.top = `${position.y}px`;
+                container.style.transform = 'translate3d(0, 0, 0)';
+                container.style.zIndex = '9999';
+            }
+            
+            // Update the car model's rotation to match the heading
+            updateCarModelRotation(heading);
+        }
+        
         // Setup UI event listeners
         function setupUIEventListeners(maplibreMap, deckOverlay) {
             // Sidebar toggle
@@ -1263,12 +1622,6 @@
                 }
             });
             
-            // Follow dot button
-            document.getElementById('follow-dot').addEventListener('click', function() {
-                this.classList.toggle('active');
-                window.map.followDot = this.classList.contains('active');
-            });
-            
             // Set up visualization controls
             document.getElementById('show-radius').addEventListener('change', () => {
                 if (window.map.gpsData.length > 0) {
@@ -1295,10 +1648,9 @@
             });
             
             document.getElementById('cluster-visualization').addEventListener('change', () => {
-            document.getElementById('follow-dot').addEventListener('change', function() {
-                window.map.followDot = this.checked;
-            });
-
+                if (window.map.gpsData.length > 0) {
+                    updateLayers(deckOverlay, window.map.gpsData);
+                }
             });
             
             document.getElementById('cluster-threshold').addEventListener('change', function() {
@@ -1318,38 +1670,25 @@
         
         // Helper function to create bounds from GPS data
         function getBoundsFromGPSData(gpsData) {
-            if (!gpsData || gpsData.length === 0) {
-                console.warn("Empty GPS data provided to getBoundsFromGPSData");
-                return [[0, 0], [0, 0]]; // Default bounds
-            }
-            
             let minLng = Infinity;
             let maxLng = -Infinity;
             let minLat = Infinity;
             let maxLat = -Infinity;
             
-            // Find min/max coordinates
             gpsData.forEach(point => {
-                if (point && typeof point.longitude === 'number' && typeof point.latitude === 'number') {
-                    minLng = Math.min(minLng, point.longitude);
-                    maxLng = Math.max(maxLng, point.longitude);
-                    minLat = Math.min(minLat, point.latitude);
-                    maxLat = Math.max(maxLat, point.latitude);
-                }
+                minLng = Math.min(minLng, point.longitude);
+                maxLng = Math.max(maxLng, point.longitude);
+                minLat = Math.min(minLat, point.latitude);
+                maxLat = Math.max(maxLat, point.latitude);
             });
             
-            // Add padding but ensure we stay within valid lat/lng ranges
+            // Add some padding
             const lngPadding = (maxLng - minLng) * 0.1;
             const latPadding = (maxLat - minLat) * 0.1;
             
-            // Ensure latitude stays within -90 to 90 range
-            const paddedMinLat = Math.max(minLat - latPadding, -90);
-            const paddedMaxLat = Math.min(maxLat + latPadding, 90);
-            
-            // Return southwest and northeast corners
             return [
-                [minLng - lngPadding, paddedMinLat],
-                [maxLng + lngPadding, paddedMaxLat]
+                [minLng - lngPadding, minLat - latPadding],
+                [maxLng + lngPadding, maxLat + latPadding]
             ];
         }
 
@@ -1417,12 +1756,6 @@
             const clusterVisualization = document.getElementById('cluster-visualization').checked;
             const clusterThreshold = parseFloat(document.getElementById('cluster-threshold').value);
             
-            // Get animation state if provided
-            const animationState = options.animationState || { pulsePhase: 0 };
-            
-            // Get follow option
-            const followDot = options.followDot !== undefined ? options.followDot : window.map.followDot;
-            
             // Combine user options with control panel settings
             const settings = {
                 showRadius: options.showRadius !== undefined ? options.showRadius : showRadius,
@@ -1431,8 +1764,7 @@
                 showPoints: options.showPoints !== undefined ? options.showPoints : showPoints,
                 clusterVisualization: options.clusterVisualization !== undefined ? options.clusterVisualization : clusterVisualization,
                 clusterThreshold: options.clusterThreshold !== undefined ? options.clusterThreshold : clusterThreshold,
-                currentTimeIndex: options.currentTimeIndex !== undefined ? options.currentTimeIndex : window.map.currentTimeIndex,
-                followDot: followDot
+                currentTimeIndex: options.currentTimeIndex !== undefined ? options.currentTimeIndex : window.map.currentTimeIndex
             };
             
             // Create path layer for lines connecting GPS points
@@ -1472,6 +1804,7 @@
                         const p1 = gpsData[lowerIdx];
                         const p2 = gpsData[lowerIdx + 1];
                         // Calculate the angle between the two points
+                        // Using atan2 gives us the angle in radians from the x-axis
                         currentHeading = Math.atan2(
                             p2.latitude - p1.latitude,
                             p2.longitude - p1.longitude
@@ -1480,14 +1813,10 @@
                 } else {
                     // Interpolate between points
                     const fraction = currentIdx - lowerIdx;
-                    
-                    // Use cubic easing for smoother transitions
-                    // Linear interpolation
-                    
                     const p1 = gpsData[lowerIdx];
                     const p2 = gpsData[upperIdx];
                     
-                    // Smooth interpolation between two points
+                    // Linear interpolation between two points
                     currentPosition = [
                         p1.longitude + (p2.longitude - p1.longitude) * fraction,
                         p1.latitude + (p2.latitude - p1.latitude) * fraction
@@ -1500,17 +1829,10 @@
                         p2.longitude - p1.longitude
                     );
                 }
+                
+                // Update car position and orientation
+                updateCarPosition(currentPosition[0], currentPosition[1], currentHeading);
             }
-            
-            // Calculate pulsing size based on animation state
-            // Make the map follow the current position if enabled
-            if (window.map.followDot && window.map.maplibreMap) {
-                window.map.maplibreMap.easeTo({
-                    center: currentPosition,
-                    duration: 50 // Short duration for smooth following
-                });
-            }
-            const pulseSize = 15 + Math.sin(animationState.pulsePhase * Math.PI * 2) * 5;
             
             // Create pulsing effect around current position
             const pulseLayer = new deck.ScatterplotLayer({
@@ -1519,36 +1841,34 @@
                 pickable: false,
                 stroked: true,
                 filled: true,
-                opacity: 0.5,
+                opacity: 0,
                 radiusScale: 6,
-                radiusMinPixels: pulseSize, // Animated size
+                radiusMinPixels: 20,
                 radiusMaxPixels: 30,
                 lineWidthMinPixels: 1,
                 getPosition: d => d.position,
-                getFillColor: [255, 107, 0, 80], // Semi-transparent orange
-                getLineColor: [255, 165, 0, 120], // Orange outline
+                getFillColor: [255, 107, 0, 0],
+                getLineColor: [255, 107, 0, 0],
                 parameters: {
-                    depthTest: false,
-                    blend: true,
-                    blendFunc: [770, 771] // Standard alpha blending
+                    depthTest: false
                 }
             });
             
-            // Create current position marker (represented as a bigger point)
+            // Create current position marker (represented as a bigger point but transparent)
             const currentPositionLayer = new deck.ScatterplotLayer({
                 id: 'current-position',
                 data: [{position: currentPosition}],
-                pickable: true,
+                pickable: false,
                 stroked: true,
                 filled: true,
-                opacity: 1.0, // Make it fully visible
+                opacity: 0,
                 radiusScale: 6,
-                radiusMinPixels: 8, // Smaller core
-                radiusMaxPixels: 12,
+                radiusMinPixels: 12,
+                radiusMaxPixels: 16,
                 lineWidthMinPixels: 2,
                 getPosition: d => d.position,
-                getFillColor: [255, 107, 0, 255], // Bright orange core
-                getLineColor: [255, 255, 255, 200], // White border
+                getFillColor: [255, 107, 0, 0],
+                getLineColor: [255, 255, 255, 0],
                 parameters: {
                     depthTest: false
                 }
@@ -1789,32 +2109,7 @@
             
             // Add event listener for the Project 3 button (triplog.csv)
             document.getElementById('load-triplog').addEventListener('click', () => {
-                // Disable follow feature
-                window.map.followDot = false;
-                document.getElementById('follow-dot').classList.remove('active');
-
-                // Load triplog data with Promise handling
-                loadTriplogData()
-                    .then(gpsData => {
-                        // After data is loaded successfully, THEN fit bounds
-                        if (gpsData && gpsData.length > 0) {
-                            const bounds = getBoundsFromGPSData(gpsData);
-                            window.map.maplibreMap.fitBounds(bounds, { padding: 50 });
-                            
-                            // Add event listener for moveend
-                            window.map.maplibreMap.once('moveend', () => {
-                                // Log message after panning is complete
-                                console.log("finished panning out to show all points");
-
-                                // Enable follow feature after the map has finished panning
-                                document.getElementById('follow-dot').classList.add('active');
-                                window.map.followDot = true;
-                            });
-                        }
-                    })
-                    .catch(error => {
-                        console.error("Error in loading triplog data:", error);
-                    });
+                loadTriplogData();
             });
             
             // Add event listener for the Zybooks button
@@ -1828,12 +2123,6 @@
         
         // Load sample data for Zybooks
         function loadZybooksData() {
-            // Check if map is initialized
-            if (!window.map || !window.map.deckgl) {
-                showToast('Map not yet initialized. Please try again in a moment.', 'error');
-                return;
-            }
-
             // Sample data points
             const zybooksData = `0,35.211037,-97.438866
 5,35.222366,-97.45298
@@ -1884,85 +2173,87 @@
         
         // Load triplog.csv data
         function loadTriplogData() {
-            // Check if map is initialized
-            if (!window.map || !window.map.deckgl) {
-                showToast('Map not yet initialized. Please try again in a moment.', 'error');
-                return Promise.reject('Map not initialized');
-            }
-            
             // Show loading overlay
             document.getElementById('loading-overlay').classList.add('active');
             
             console.log("Attempting to load triplog.csv...");
             
-            // Return a Promise
-            return new Promise((resolve, reject) => {
-                // Fetch the triplog.csv file
-                fetch('triplog.csv')
-                    .then(response => {
-                        console.log("Fetch response status:", response.status);
-                        if (!response.ok) {
-                            throw new Error(`Failed to load triplog.csv - Status: ${response.status}`);
-                        }
-                        return response.text();
-                    })
-                    .then(csvText => {
-                        console.log('CSV data loaded, length:', csvText.length);
-                        console.log('First few characters:', csvText.substring(0, 100) + '...'); // Log a snippet of the loaded data
-                        
-                        // Set the CSV text to the textarea
-                        document.getElementById('csv-textarea').value = csvText;
-                        
-                        // Parse the GPS data
-                        const gpsData = parseGPSData();
-                        if (!gpsData) {
-                            throw new Error('Failed to parse triplog.csv data');
-                        }
-                        
-                        console.log('Parsed GPS data:', gpsData.length + ' points loaded');
-                        
-                        // Store the data globally
-                        window.map.gpsData = gpsData;
-                        window.map.currentTimeIndex = 0;
-                        
-                        // Update layers with new data
+            // Fetch the triplog.csv file
+            fetch('triplog.csv')
+                .then(response => {
+                    console.log("Fetch response status:", response.status);
+                    if (!response.ok) {
+                        throw new Error(`Failed to load triplog.csv - Status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(csvText => {
+                    console.log('CSV data loaded, length:', csvText.length);
+                    console.log('First few characters:', csvText.substring(0, 100) + '...'); // Log a snippet of the loaded data
+                    
+                    // Set the CSV text to the textarea
+                    document.getElementById('csv-textarea').value = csvText;
+                    
+                    // Parse the GPS data
+                    const gpsData = parseGPSData();
+                    if (!gpsData) {
+                        throw new Error('Failed to parse triplog.csv data');
+                    }
+                    
+                    console.log('Parsed GPS data:', gpsData.length + ' points loaded');
+                    
+                    // Store the data globally
+                    window.map.gpsData = gpsData;
+                    window.map.currentTimeIndex = 0;
+                    
+                    // Update layers with new data
+                    updateLayers(window.map.deckgl, gpsData);
+                    
+                    // Center map on the data
+                    const bounds = getBoundsFromGPSData(gpsData);
+                    window.map.maplibreMap.fitBounds(bounds, { padding: 50 });
+                    
+                    // Update journey summary
+                    updateJourneySummary(gpsData);
+                    
+                    // Update timeline slider max value
+                    updateTimelineSlider(gpsData);
+                    
+                    // Hide loading overlay
+                    document.getElementById('loading-overlay').classList.remove('active');
+                    
+                    // Force a redraw of the layers to ensure visibility with a slight delay
+                    // This helps ensure all marker circles are visible
+                    setTimeout(() => {
+                        console.log('Redrawing layers to ensure marker visibility');
                         updateLayers(window.map.deckgl, gpsData);
                         
-                        // Update journey summary
-                        updateJourneySummary(gpsData);
-                        
-                        // Update timeline slider max value
-                        updateTimelineSlider(gpsData);
-                        
-                        // Hide loading overlay
-                        document.getElementById('loading-overlay').classList.remove('active');
-                        
-                        // Force a redraw of the layers to ensure visibility with a slight delay
-                        // This helps ensure all marker circles are visible
-                        setTimeout(() => {
-                            console.log('Redrawing layers to ensure marker visibility');
-                            updateLayers(window.map.deckgl, gpsData);
-                            
-                            // Check DeckGL state
-                            setTimeout(checkDeckGLState, 250);
-                        }, 500);
-                        
-                        showToast(`Loaded ${gpsData.length} points from triplog.csv`, 'success');
-                        
-                        // Resolve the promise with the GPS data
-                        resolve(gpsData);
-                    })
-                    .catch(error => {
-                        // Hide loading overlay
-                        document.getElementById('loading-overlay').classList.remove('active');
-                        
-                        console.error('Error loading triplog.csv:', error);
-                        showToast(`Error: ${error.message}`, 'error');
-                        
-                        // Reject the promise
-                        reject(error);
-                    });
-            });
+                        // Check DeckGL state
+                        setTimeout(checkDeckGLState, 250);
+                    }, 500);
+                    
+                    showToast(`Loaded ${gpsData.length} points from triplog.csv`, 'success');
+                })
+                .catch(error => {
+                    // Hide loading overlay
+                    document.getElementById('loading-overlay').classList.remove('active');
+                    
+                    console.error('Error loading triplog.csv:', error);
+                    showToast(`Error: ${error.message}`, 'error');
+                    
+                    // Try to check if the file exists by sending a HEAD request
+                    fetch('triplog.csv', { method: 'HEAD' })
+                        .then(response => {
+                            console.log('HEAD check status:', response.status);
+                            if (!response.ok) {
+                                console.error('triplog.csv does not exist or is not accessible');
+                                showToast("Error: triplog.csv file does not exist", 'error');
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Network error checking for triplog.csv:', err);
+                        });
+                });
         }
         
         // Setup timeline controls
@@ -2064,20 +2355,6 @@
             let lastTime = 0;
             let lastIndex = window.map.currentTimeIndex;
             
-            // Create/reset any animation state
-            if (!window.map.animation) {
-                window.map.animation = {
-                    pulsePhase: 0,
-                    transition: {
-                        active: false,
-                        startValue: 0,
-                        endValue: 0,
-                        startTime: 0,
-                        duration: 0
-                    }
-                };
-            }
-            
             function animate(timestamp) {
                 if (!window.map.isPlaying) return;
                 
@@ -2085,35 +2362,20 @@
                 if (!lastTime) lastTime = timestamp;
                 const delta = timestamp - lastTime;
                 
-                // Update animation state
-                window.map.animation.pulsePhase = (window.map.animation.pulsePhase + delta/1000) % 1;
-                
                 // Update only if enough time has passed (for smoother animation)
-                if (delta > 12.5) {  // ~80 fps
+                if (delta > 33) {  // ~30 fps for smoothness
                     lastTime = timestamp;
                     
                     // Advance the time index based on playback speed and delta
                     // This ensures smooth animation regardless of frame rate
                     const increment = (delta / 1000) * window.map.playbackSpeed;
+                    window.map.currentTimeIndex += increment;
                     
-                    // Apply smooth easing when transitioning between points
-                    let newTimeIndex = window.map.currentTimeIndex + increment;
-                    
-                    // Ensure we don't exceed the data bounds
-                    if (newTimeIndex >= window.map.gpsData.length) {
-                        newTimeIndex = 0;
-                        
-                        // Set up a transition to smooth the loop back to start
-                        window.map.animation.transition = {
-                            active: true,
-                            startValue: window.map.gpsData.length - 1,
-                            endValue: 0,
-                            startTime: timestamp,
-                            duration: 500 // ms for transition
-                        };
+                    // Check if we've reached the end
+                    if (window.map.currentTimeIndex >= window.map.gpsData.length) {
+                        window.map.currentTimeIndex = 0;
                     }
                     
-                    window.map.currentTimeIndex = newTimeIndex;
                     const index = Math.floor(window.map.currentTimeIndex);
                     
                     // Only update visuals if we've moved to a new point
@@ -2129,9 +2391,9 @@
                     }
                     
                     // Always update the map layers (for smooth interpolation)
+                    // This is crucial for smooth animation that stays in sync with camera movements
                     updateLayers(window.map.deckgl, window.map.gpsData, { 
-                        currentTimeIndex: window.map.currentTimeIndex, // Use the fractional index for smoother motion
-                        animationState: window.map.animation // Pass animation state for visual effects
+                        currentTimeIndex: window.map.currentTimeIndex // Use the fractional index for smoother motion
                     });
                 }
                 
@@ -2367,8 +2629,60 @@
             
             return paddedPolygon;
         }
-        
-        // Add cubic easing function for smoother animations
+
+        // Add this function to animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Check if car model and data exist
+            if (window.map.carModel && window.map.gpsData && window.map.gpsData.length > 0) {
+                // Calculate target point for car to face
+                const targetPoint = calculateTargetPoint();
+                if (targetPoint) {
+                    // Ensure car is always oriented correctly
+                    const currentIdx = Math.floor(window.map.currentTimeIndex);
+                    if (currentIdx < window.map.gpsData.length - 1) {
+                        const p1 = window.map.gpsData[currentIdx];
+                        const p2 = window.map.gpsData[currentIdx + 1];
+                        const heading = Math.atan2(
+                            p2.latitude - p1.latitude,
+                            p2.longitude - p1.longitude
+                        );
+                        updateCarModelRotation(heading);
+                    }
+                }
+            }
+            
+            // Render the scene
+            if (window.map.threeJsScene && window.map.threeJsScene.renderer) {
+                window.map.threeJsScene.renderer.render(
+                    window.map.threeJsScene.scene, 
+                    window.map.threeJsScene.camera
+                );
+            }
+        }
+
+        // Function to calculate target point (next point or segment end)
+        function calculateTargetPoint() {
+            if (!window.map.gpsData || window.map.gpsData.length <= 1) return null;
+            
+            const currentIdx = Math.floor(window.map.currentTimeIndex);
+            const nextIdx = Math.min(currentIdx + 1, window.map.gpsData.length - 1);
+            
+            // If at the last point, use the same point as both current and target
+            if (currentIdx === window.map.gpsData.length - 1) {
+                return [
+                    window.map.gpsData[currentIdx].longitude, 
+                    window.map.gpsData[currentIdx].latitude
+                ];
+            }
+            
+            // Otherwise return the next point
+            return [
+                window.map.gpsData[nextIdx].longitude,
+                window.map.gpsData[nextIdx].latitude
+            ];
+        }
     </script>
 </body>
 </html> 
