@@ -1,0 +1,12 @@
+{
+  "name": "tripgang",
+  "version": "1.0.0",
+  "description": "GPS visualization with Three.js and Leaflet",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+} 
