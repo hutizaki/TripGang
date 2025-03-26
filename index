@@ -1,0 +1,7 @@
+let stopsZones = initializeStopsZones(); // Example initialization
+
+if (stopsZones && stopsZones.length > 0) {
+    console.log("Stops Zones Length:", stopsZones.length);
+} else {
+    console.warn("Stops Zones is undefined or empty.");
+} 

@@ -1,0 +1,366 @@
+lockdown-install.js:1 Removing unpermitted intrinsics
+(index):3945 Setting up stop detection analysis...
+(index):4043 Journey summary observer set up with infinite loop protection
+(index):4418 Setting up stop detection analysis for info panel...
+(index):4514 Removed h1/h2 stats from journey summary
+(index):4572 Modified journey summary observer set up
+(index):4878 Uncaught TypeError: Failed to execute 'observe' on 'MutationObserver': parameter 1 is not of type 'Node'.
+    at HTMLDocument.<anonymous> ((index):4878:34)
+(anonymous) @ (index):4878
+(index):1474 MapLibre map loaded with deck.gl overlay
+(index):3963 Waiting for journey-details element... (Attempt 1/20)
+(index):4460 Waiting for GPS data... (Attempt 1/20)
+(index):3963 Waiting for journey-details element... (Attempt 2/20)
+(index):4460 Waiting for GPS data... (Attempt 2/20)
+(index):3963 Waiting for journey-details element... (Attempt 3/20)
+(index):4460 Waiting for GPS data... (Attempt 3/20)
+(index):3963 Waiting for journey-details element... (Attempt 4/20)
+(index):4460 Waiting for GPS data... (Attempt 4/20)
+(index):2318 Successfully parsed 10 GPS data points
+(index):2325 Calling updateLayers() from loadZybooksData handler
+(index):1709 Updating layers with 10 points
+(index):1715 First point: {time: 0, latitude: 35.211037, longitude: -97.438866, index: 0}
+(index):2131 Setting DeckGL layers: (5) [n, n, n, n, n]
+(index):2138 DeckGL updated with layers
+(index):2651 Uncaught TypeError: Cannot set properties of null (setting 'textContent')
+    at updateJourneySummary ((index):2651:110)
+    at loadZybooksData ((index):2333:13)
+    at HTMLButtonElement.<anonymous> ((index):2281:17)
+updateJourneySummary @ (index):2651
+loadZybooksData @ (index):2333
+(anonymous) @ (index):2281
+(index):2948 Running cluster analysis with threshold: 0.5km
+(index):3129 Finding clusters with threshold: 0.5km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3059 ====== CLUSTER ANALYSIS SUMMARY ======
+(index):3060 Total number of clusters: 1
+(index):3067 Total GPS points in clusters: 4 out of 10 (40.00%)
+(index):3070 Average cluster size: 4.00 points
+(index):3071 Largest cluster: 4 points
+(index):3072 Smallest cluster: 4 points
+(index):3080 Cluster size distribution:
+(index):3082   4 points: 1 clusters
+(index):3086 
+Checking for potential causes of count discrepancy:
+(index):3090 Clusters with minimum size (3 points): 0
+(index):3094 Very short duration clusters (<1 minute): 0
+(index):3129 Finding clusters with threshold: 0.49km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3129 Finding clusters with threshold: 0.495km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3129 Finding clusters with threshold: 0.5km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3129 Finding clusters with threshold: 0.505km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3129 Finding clusters with threshold: 0.51km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3113 Threshold sensitivity analysis:
+(index):3115   Threshold 0.49km: 1 clusters
+(index):3115   Threshold 0.495km: 1 clusters
+(index):3115   Threshold 0.5km: 1 clusters
+(index):3115   Threshold 0.505km: 1 clusters
+(index):3115   Threshold 0.51km: 1 clusters
+(index):3098 Clusters at threshold boundary: 0
+(index):3253 
+Trying to match Java unit test result (239 stops):
+(index):2948 Running cluster analysis with threshold: 0.51km
+(index):3129 Finding clusters with threshold: 0.51km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3258 With threshold 0.51km: 4 points in 1 clusters
+(index):2948 Running cluster analysis with threshold: 0.52km
+(index):3129 Finding clusters with threshold: 0.52km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3258 With threshold 0.52km: 4 points in 1 clusters
+(index):2948 Running cluster analysis with threshold: 0.53km
+(index):3129 Finding clusters with threshold: 0.53km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3258 With threshold 0.53km: 4 points in 1 clusters
+(index):2948 Running cluster analysis with threshold: 0.54km
+(index):3129 Finding clusters with threshold: 0.54km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3258 With threshold 0.54km: 4 points in 1 clusters
+(index):2948 Running cluster analysis with threshold: 0.55km
+(index):3129 Finding clusters with threshold: 0.55km
+(index):3130 Total points to analyze: 10
+(index):3165 Built proximity map: 5 connections between points
+(index):3222 Found 1 clusters with the new algorithm
+(index):3258 With threshold 0.55km: 4 points in 1 clusters
+(index):3266 SUMMARY: Project 3 data has 1 clusters containing 4 points.
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.5km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3379 ====== h2StopDetection RESULTS ======
+(index):3380 Total GPS points: 10
+(index):3381 Total stop points: undefined
+(index):3382 Total moving points: undefined
+(index):3383 Uncaught TypeError: Cannot read properties of undefined (reading 'length')
+    at (index):3383:88
+(anonymous) @ (index):3383
+setInterval
+(anonymous) @ (index):3372
+(index):3479 ====== CORRECTED h1StopDetection (SKIPPING FIRST POINT) ======
+(index):3480 Total GPS points: 10
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.6km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3484 Standard h1 (0.6km) finds 3 stops
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.58km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.581km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.582km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.583km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.584km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.585km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.586km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.587km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.588km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.589km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.59km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.591km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.592km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.593km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.594km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.595km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.596km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.597km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.598km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.599km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.6km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.601km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.602km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.603km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.604km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.605km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.606km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.607km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.608km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.609km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.61km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.611km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.612km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.613km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.614km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.615km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.616km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.617km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.618km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.619km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.62km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3499 Final h1 stop count: 3
+(index):3500 Final h1 moving points: 7
+(index):3583 ====== STOP DETECTION WITH TARGET VALUES ======
+(index):3584 Total GPS points: 10
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.58km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.581km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.582km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.583km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.584km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.585km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.586km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.587km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.588km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.589km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.59km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.591km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.592km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.593km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.594km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.595km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.596km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.597km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.598km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.599km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.6km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.601km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.602km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.603km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.604km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.605km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.606km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.607km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.608km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.609km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.61km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.611km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.612km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.613km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.614km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.615km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.616km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.617km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.618km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.619km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.62km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.49km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.491km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.492km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.493km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.494km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.495km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.496km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.497km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.498km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.499km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.5km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.501km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.502km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.503km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.504km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.505km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.506km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.507km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.508km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.509km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.51km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):3610 h1 (displacement) stops: 3
+(index):3611 h2 (proximity) stops: 4
+(index):3612 h1 moving points: 7
+(index):3613 h2 moving points: 6
+(index):3963 Waiting for journey-details element... (Attempt 5/20)
+(index):4440 ====== STOP DETECTION USING HAVERSINE (MATCHING JAVA) ======
+(index):4441 Total GPS points: 10
+(index):3818 Running h1StopDetection with Haversine and threshold: 0.6km
+(index):3864 h1StopDetection found 3 stop points and 7 moving points
+(index):4445 h1 (Java match) finds 3 stops
+(index):3873 Running h2StopDetection with Haversine and threshold: 0.51km
+(index):3938 h2StopDetection found 4 stop points and 6 moving points
+(index):4449 h2 (Java match) finds 4 stops
+(index):4405 Stop detection stats updated in the information panel
+(index):4405 Stop detection stats updated in the information panel
+(index):4578 Journey summary update skipped as requested
+(index):4405 Stop detection stats updated in the information panel
+(index):3963 Waiting for journey-details element... (Attempt 6/20)
+ Waiting for journey-details element... (Attempt 7/20)
+ Waiting for journey-details element... (Attempt 8/20)
+ Waiting for journey-details element... (Attempt 9/20)
+ Waiting for journey-details element... (Attempt 10/20)
+ Waiting for journey-details element... (Attempt 11/20)
+ Waiting for journey-details element... (Attempt 12/20)
+ Waiting for journey-details element... (Attempt 13/20)
+ Waiting for journey-details element... (Attempt 14/20)
+ Waiting for journey-details element... (Attempt 15/20)
+ Waiting for journey-details element... (Attempt 16/20)
+ Waiting for journey-details element... (Attempt 17/20)
+ Waiting for journey-details element... (Attempt 18/20)
+ Waiting for journey-details element... (Attempt 19/20)
+ Waiting for journey-details element... (Attempt 20/20)
