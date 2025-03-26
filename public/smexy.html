@@ -1141,6 +1141,7 @@
                 animationFrameId: null,
                 playbackSpeed: 1,
                 followDot: true,
+                isZooming: false,  // Add this flag to track zoom state
             };
             
             // Add map bearing change listener in the map load event 
@@ -1420,8 +1421,10 @@
             // Get animation state if provided
             const animationState = options.animationState || { pulsePhase: 0 };
             
-            // Get follow option
-            const followDot = options.followDot !== undefined ? options.followDot : window.map.followDot;
+            // Get follow option - respect the zooming state
+            const followDot = options.followDot !== undefined ? 
+                options.followDot : 
+                (window.map.followDot && !window.map.isZooming);
             
             // Combine user options with control panel settings
             const settings = {
@@ -1503,8 +1506,8 @@
             }
             
             // Calculate pulsing size based on animation state
-            // Make the map follow the current position if enabled
-            if (window.map.followDot && window.map.maplibreMap) {
+            // Make the map follow the current position if enabled and not zooming
+            if (window.map.followDot && !window.map.isZooming && window.map.maplibreMap) {
                 window.map.maplibreMap.easeTo({
                     center: currentPosition,
                     duration: 50 // Short duration for smooth following
@@ -1985,7 +1988,19 @@
                 if (window.map.isPlaying) {
                     playIcon.classList.remove('fa-play');
                     playIcon.classList.add('fa-pause');
-                    startAnimation();
+                    
+                    // Apply zoom based on current playback speed when starting playback
+                    // Only do this if we're not already zooming
+                    if (!window.map.isZooming) {
+                        applyPlaybackSpeedZoom(window.map.playbackSpeed);
+                        
+                        // Start animation after a short delay to ensure zoom has begun
+                        setTimeout(() => {
+                            startAnimation();
+                        }, 100);
+                    } else {
+                        startAnimation();
+                    }
                 } else {
                     playIcon.classList.remove('fa-pause');
                     playIcon.classList.add('fa-play');
@@ -2019,7 +2034,11 @@
             
             // Playback speed selector
             playbackSpeed.addEventListener('change', () => {
-                window.map.playbackSpeed = parseFloat(playbackSpeed.value);
+                const newSpeed = parseFloat(playbackSpeed.value);
+                window.map.playbackSpeed = newSpeed;
+                
+                // Apply zoom based on new playback speed, regardless if playing or paused
+                applyPlaybackSpeedZoom(newSpeed);
             });
         }
         
@@ -2369,6 +2388,65 @@
         }
         
         // Add cubic easing function for smoother animations
+        
+        // Add a function to calculate the appropriate zoom level based on playback speed
+        function getZoomLevelForPlaybackSpeed(speed) {
+            const baseZoom = 10; // Change base zoom level to 15
+            
+            switch(parseFloat(speed)) {
+                case 1:
+                    return baseZoom; // 1x speed
+                case 2:
+                    return baseZoom - 1; // 2x speed (zoomed out one level)
+                case 4:
+                    return baseZoom - 2; // 4x speed (zoomed out three levels)
+                default:
+                    return baseZoom; // Default to base zoom
+            }
+        }
+
+        // Modify the applyPlaybackSpeedZoom function
+        function applyPlaybackSpeedZoom(speed) {
+            if (!window.map.maplibreMap || !window.map.gpsData || window.map.gpsData.length === 0) {
+                return;
+            }
+            
+            // Set zooming flag
+            window.map.isZooming = true;
+            
+            // Temporarily disable follow
+            const wasFollowing = window.map.followDot;
+            window.map.followDot = false;
+            
+            // Get current center point
+            const currentCenter = window.map.maplibreMap.getCenter();
+            
+            // Calculate zoom level based on playback speed
+            const zoomLevel = getZoomLevelForPlaybackSpeed(speed);
+            
+            console.log(`Starting zoom animation to level ${zoomLevel} for playback speed ${speed}x`);
+            
+            // Fly to the same center but with adjusted zoom
+            window.map.maplibreMap.flyTo({
+                center: [currentCenter.lng, currentCenter.lat],
+                zoom: zoomLevel,
+                duration: 600 // Slightly longer for smoother transition
+            });
+            
+            // Listen for the end of the animation
+            window.map.maplibreMap.once('moveend', () => {
+                console.log(`Zoom animation completed to level ${zoomLevel}`);
+                window.map.isZooming = false;
+                
+                // Restore follow state if it was enabled
+                if (wasFollowing) {
+                    setTimeout(() => {
+                        window.map.followDot = wasFollowing;
+                        console.log(`Restored follow dot to ${wasFollowing}`);
+                    }, 100); // Short delay to ensure zoom is fully complete
+                }
+            });
+        }
     </script>
 </body>
 </html> 
