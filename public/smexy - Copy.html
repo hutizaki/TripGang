@@ -1380,12 +1380,6 @@
     </div>
     
     <script>
-
-        const BASE_VIEW_STATE = {
-                zoom: 13,
-                pitch: 0,
-                bearing: 0
-            };
         // Initialize the map when the DOM is fully loaded
         document.addEventListener('DOMContentLoaded', () => {
             // Show loading overlay
@@ -2497,23 +2491,6 @@
                 if (window.map.isPlaying) {
                     playIcon.classList.remove('fa-play');
                     playIcon.classList.add('fa-pause');
-                    
-                    // Only reset zoom, pitch, and bearing (not center) using deck.gl's viewState
-                    const currentViewState = window.map.deckgl.deck.viewState || {};
-                    
-                    // Create a new viewState that keeps the current center but resets zoom, pitch and bearing
-                    const newViewState = {
-                        ...currentViewState,
-                        zoom: INITIAL_VIEW_STATE.zoom,
-                        pitch: INITIAL_VIEW_STATE.pitch,
-                        bearing: INITIAL_VIEW_STATE.bearing,
-                        transitionDuration: 1000 // 1 second animation
-                    };
-                    
-                    // Update the deck.gl viewState
-                    window.map.deckgl.setProps({
-                        viewState: newViewState
-                    });
                     
                     // Apply zoom based on current playback speed when starting playback
                     // Only do this if we're not already zooming
