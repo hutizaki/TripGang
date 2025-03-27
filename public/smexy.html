@@ -109,6 +109,7 @@
             border-bottom: 1px solid rgba(0,0,0,0.05);
         }
         
+        /* App title and header styles */
         .app-title {
             font-family: 'Montserrat', sans-serif;
             font-weight: 700;
@@ -126,6 +127,47 @@
             font-size: 0.9rem;
             opacity: 0.9;
             margin-top: 3px;
+        }
+        
+        /* Vehicle dropdown selector styles */
+        .vehicle-selector {
+            display: flex;
+            align-items: center;
+        }
+        
+        .vehicle-dropdown {
+            padding: 8px 12px;
+            border: 1px solid #e1e1e1;
+            border-radius: var(--border-radius);
+            background-color: white;
+            font-family: 'Roboto', sans-serif;
+            font-size: 0.95rem;
+            color: var(--text-dark);
+            min-width: 180px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%232998ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            padding-right: 30px;
+        }
+        
+        .vehicle-dropdown:hover, .vehicle-dropdown:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(41, 152, 255, 0.15);
+            outline: none;
+        }
+        
+        /* Responsive adjustments for vehicle dropdown */
+        @media (max-width: 768px) {
+            .vehicle-dropdown {
+                min-width: 140px;
+                font-size: 0.9rem;
+                padding: 6px 10px;
+            }
         }
         
         /* Main Content Area */
@@ -1133,6 +1175,15 @@
                     <h1>SmexyMap</h1>
                     <div class="app-subtitle">GPS Visualization Tool (Deck.GL)</div>
                 </div>
+            </div>
+            <div class="vehicle-selector">
+                <select id="vehicle-select" class="vehicle-dropdown">
+                    <option value="" disabled selected>Select Vehicle</option>
+                    <option value="car1">Sedan</option>
+                    <option value="car2">SUV</option>
+                    <option value="car3">Truck</option>
+                    <option value="car4">Motorcycle</option>
+                </select>
             </div>
         </header>
         
@@ -5062,6 +5113,48 @@
         } else {
             console.warn("Stops Zones is undefined or empty."); // Log a warning if stopsZones is not available
         }
+
+        // Vehicle Selection Dropdown Functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const vehicleSelect = document.getElementById('vehicle-select');
+            
+            if (vehicleSelect) {
+                vehicleSelect.addEventListener('change', function() {
+                    const selectedVehicle = this.value;
+                    console.log(`Selected vehicle: ${selectedVehicle}`);
+                    
+                    // Show loading overlay during vehicle model change
+                    document.getElementById('loading-overlay').classList.add('active');
+                    
+                    // Simulate loading the vehicle model (will be linked to models in the future)
+                    setTimeout(() => {
+                        // Here you would load the actual vehicle model from public/models
+                        // For now, we'll just show a notification
+                        
+                        // Remove loading overlay
+                        document.getElementById('loading-overlay').classList.remove('active');
+                        
+                        // Show notification
+                        showToast(`Vehicle changed to ${vehicleSelect.options[vehicleSelect.selectedIndex].text}`, 'success');
+                        
+                        // In the future, this would call a function to load the 3D model
+                        // loadVehicleModel(selectedVehicle);
+                    }, 800);
+                });
+                
+                // Helper function to load vehicle model (placeholder for future implementation)
+                function loadVehicleModel(vehicleId) {
+                    // This function would load the appropriate 3D model from public/models
+                    // based on the selected vehicle ID
+                    console.log(`Loading 3D model for vehicle ID: ${vehicleId}`);
+                    
+                    // Future implementation will go here
+                    // Example:
+                    // const modelPath = `public/models/${vehicleId}.glb`;
+                    // loadGLTFModel(modelPath);
+                }
+            }
+        });
 
     </script>
 </body>
