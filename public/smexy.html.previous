@@ -1380,6 +1380,12 @@
     </div>
     
     <script>
+
+        const BASE_VIEW_STATE = {
+                zoom: 13,
+                pitch: 0,
+                bearing: 0
+            };
         // Initialize the map when the DOM is fully loaded
         document.addEventListener('DOMContentLoaded', () => {
             // Show loading overlay
@@ -1638,25 +1644,39 @@
             // Set up visualization controls
             document.getElementById('show-radius').addEventListener('change', () => {
                 if (window.map.gpsData.length > 0) {
-                    updateLayers(deckOverlay, window.map.gpsData);
+                    // Preserve current view position by not changing camera
+                    const currentViewState = window.map.maplibreMap.getCenter();
+                    const currentZoom = window.map.maplibreMap.getZoom();
+                    updateLayers(deckOverlay, window.map.gpsData, {
+                        preserveCurrentView: true
+                    });
                 }
             });
             
             document.getElementById('highlight-short-distances').addEventListener('change', () => {
                 if (window.map.gpsData.length > 0) {
-                    updateLayers(deckOverlay, window.map.gpsData);
+                    // Preserve current view position by not changing camera
+                    updateLayers(deckOverlay, window.map.gpsData, {
+                        preserveCurrentView: true
+                    });
                 }
             });
             
             document.getElementById('show-points').addEventListener('change', () => {
                 if (window.map.gpsData.length > 0) {
-                    updateLayers(deckOverlay, window.map.gpsData);
+                    // Preserve current view position by not changing camera
+                    updateLayers(deckOverlay, window.map.gpsData, {
+                        preserveCurrentView: true
+                    });
                 }
             });
             
             document.getElementById('cluster-visualization').addEventListener('change', () => {
                 if (window.map.gpsData.length > 0) {
-                    updateLayers(deckOverlay, window.map.gpsData);
+                    // Preserve current view position by not changing camera
+                    updateLayers(deckOverlay, window.map.gpsData, {
+                        preserveCurrentView: true
+                    });
                 }
             });
         }
@@ -1858,10 +1878,13 @@
             // Calculate pulsing size based on animation state
             // Make the map follow the current position if enabled and not zooming
             if (window.map.followDot && !window.map.isZooming && window.map.maplibreMap) {
-                window.map.maplibreMap.easeTo({
-                    center: currentPosition,
-                    duration: 50 // Short duration for smooth following
-                });
+                // Check if we should preserve the current view (for visualization controls)
+                if (!settings.preserveCurrentView) {
+                    window.map.maplibreMap.easeTo({
+                        center: currentPosition,
+                        duration: 50 // Short duration for smooth following
+                    });
+                }
             }
             const pulseSize = 15 + Math.sin(animationState.pulsePhase * Math.PI * 2) * 5;
             
@@ -2492,18 +2515,60 @@
                     playIcon.classList.remove('fa-play');
                     playIcon.classList.add('fa-pause');
                     
-                    // Apply zoom based on current playback speed when starting playback
-                    // Only do this if we're not already zooming
-                    if (!window.map.isZooming) {
-                        applyPlaybackSpeedZoom(window.map.playbackSpeed);
-                        
-                        // Start animation after a short delay to ensure zoom has begun
-                        setTimeout(() => {
-                            startAnimation();
-                        }, 100);
-                    } else {
-                        startAnimation();
+                    // Only reset zoom, pitch, and bearing (not center) using deck.gl's viewState
+                    const currentViewState = window.map.deckgl.deck.viewState || {};
+                    
+                    // Make sure we have GPS data and get the first point
+                    if (!window.map.gpsData || window.map.gpsData.length === 0) {
+                        console.error("No GPS data available for animation");
+                        return;
                     }
+                    
+                    const firstPoint = window.map.gpsData[0];
+                    
+                    // Turn off follow dot during initial zoom
+                    const wasFollowing = window.map.followDot;
+                    window.map.followDot = false;
+                    // Update UI to match state
+                    document.getElementById('follow-dot').classList.remove('active');
+                    
+                    // Set zooming flag to prevent interference
+                    window.map.isZooming = true;
+                    
+                    // Calculate appropriate zoom level based on playback speed
+                    const zoomLevel = getZoomLevelForPlaybackSpeed(window.map.playbackSpeed);
+                    
+                    console.log("Starting play animation sequence: zooming to first point");
+                    
+                    // First zoom to the initial point with proper zoom level
+                    window.map.maplibreMap.flyTo({
+                        center: [firstPoint.longitude, firstPoint.latitude],
+                        zoom: zoomLevel,
+                        pitch: 0,
+                        bearing: 0,
+                        duration: 1000, // 1 second animation
+                        essential: true // Animation won't be interrupted
+                    });
+                    
+                    // Listen for the zoom animation to complete
+                    window.map.maplibreMap.once('moveend', () => {
+                        console.log("Initial zoom complete, enabling follow dot and starting animation");
+                        
+                        // Reset zooming flag
+                        window.map.isZooming = false;
+                        
+                        // Only restore follow dot if it was previously enabled
+                        if (wasFollowing) {
+                            setTimeout(() => {
+                                window.map.followDot = true;
+                                document.getElementById('follow-dot').classList.add('active');
+                                console.log("Follow dot re-enabled");
+                            }, 100); // Small delay to ensure map is stable
+                        }
+                        
+                        // Start the animation
+                        startAnimation();
+                    });
                 } else {
                     playIcon.classList.remove('fa-pause');
                     playIcon.classList.add('fa-play');
@@ -2983,8 +3048,6 @@
             
             return paddedPolygon;
         }
-        
-        // Add cubic easing function for smoother animations
         
         // Add a function to calculate the appropriate zoom level based on playback speed
         function getZoomLevelForPlaybackSpeed(speed) {
@@ -4905,6 +4968,7 @@
         } else {
             console.warn("Stops Zones is undefined or empty."); // Log a warning if stopsZones is not available
         }
+
     </script>
 </body>
-</html> 
+</html>
