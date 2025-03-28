@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmexyMap - GPS Visualization Tool (Deck.GL)</title>
     
+    <!-- Favicon setup for all platforms -->
+    <link rel="icon" href="assets/favicon/favicon.ico" sizes="any">
+    <link rel="icon" href="assets/favicon/favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="assets/favicon/apple-touch-icon.png">
+    <link rel="manifest" href="assets/favicon/site.webmanifest">
+    <meta name="theme-color" content="#2998ff">
+    
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -1163,6 +1170,40 @@
                 min-width: 100%;
             }
         }
+
+        /* Hardware acceleration hints for map markers and animations */
+        .maplibregl-marker,
+        .mapboxgl-marker,
+        .deck-layer,
+        .deck-layers,
+        .deck-tooltip,
+        .maplibregl-canvas,
+        .maplibregl-canvas-container {
+            transform: translate3d(0, 0, 0);
+            backface-visibility: hidden;
+            perspective: 1000;
+            will-change: transform;
+        }
+
+        /* Optimize pulse animation with hardware acceleration */
+        #pulse-layer {
+            transform: translate3d(0, 0, 0);
+            will-change: transform, opacity;
+        }
+
+        /* Optimize current position marker */
+        #current-position {
+            transform: translate3d(0, 0, 0);
+            will-change: transform;
+        }
+
+        /* Prevent text selection for buttons in the visual tools panel */
+        .visual-tools-panel button {
+            user-select: none; /* Prevent text selection */
+            -webkit-user-select: none; /* For Safari */
+            -moz-user-select: none; /* For Firefox */
+            -ms-user-select: none; /* For Internet Explorer/Edge */
+        }
     </style>
 </head>
 <body>
@@ -1507,9 +1548,10 @@
                 center: [INITIAL_VIEW_STATE.longitude, INITIAL_VIEW_STATE.latitude],
                 zoom: INITIAL_VIEW_STATE.zoom,
                 bearing: INITIAL_VIEW_STATE.bearing,
-                pitch: INITIAL_VIEW_STATE.pitch
+                pitch: INITIAL_VIEW_STATE.pitch,
+                minZoom: 1.4999
             });
-            
+
             // Create deck.gl layers initially empty
             const layers = [];
             
@@ -1525,7 +1567,7 @@
                         // This is a point from the GPS data
                         return {
                             html: `
-                                <div style="font-weight:bold;margin-bottom:4px;">Point #${object.index}</div>
+                                <div style="font-weight:bold;margin-bottom:4px;">Point #${object.index + 1}</div>
                                 <div>Time: ${object.time}s</div>
                                 <div>Lat: ${object.latitude.toFixed(6)}</div>
                                 <div>Lng: ${object.longitude.toFixed(6)}</div>
@@ -1575,6 +1617,12 @@
                 playbackSpeed: 1,
                 followDot: true,
                 isZooming: false,  // Add this flag to track zoom state
+                maxZoom: 5,        // Set the maximum zoom level here
+                renderingStats: {  // Add tracking for performance monitoring
+                    lastFrameTimes: [],
+                    currentFps: 0
+                },
+                cachedDotImage: null  // For bitmap caching
             };
             
             // --- New debounced user interaction detection ---
@@ -1685,6 +1733,19 @@
                     }
                 });
             });
+
+            // Add zoom start/end event listeners to detect zoom operations
+            maplibreMap.on('zoomstart', () => {
+                window.map.isZooming = true;
+                // Remember the time we started zooming for potential optimization
+                window.map.zoomStartTime = performance.now();
+            });
+            
+            maplibreMap.on('zoomend', () => {
+                window.map.isZooming = false;
+                // Clear the zoom start time
+                window.map.zoomStartTime = null;
+            });
         });
             
         // Setup UI event listeners
@@ -1693,6 +1754,13 @@
             const sidebar = document.getElementById('sidebar');
             const sidebarToggle = document.getElementById('sidebar-toggle');
             
+            // // Add zoom event listener
+            // maplibreMap.on('zoomend', () => {
+            //     if (maplibreMap.getZoom() > 5) {
+            //         maplibreMap.setZoom(5); // Reset zoom to 5 if it exceeds
+            //     }
+            // });
+
             sidebarToggle.addEventListener('click', () => {
                 sidebar.classList.toggle('sidebar-collapsed');
                 maplibreMap.resize();
@@ -1761,12 +1829,12 @@
             });
         }
         
-        // // Function to close all panels
-        // function closeAllPanels(panels) {
-        //     panels.forEach(otherPanel => {
-        //         otherPanel.classList.remove('active'); // Close other panels
-        //     });
-        // }
+        // Function to close all panels
+        function closeAllPanels(panels) {
+            panels.forEach(otherPanel => {
+                otherPanel.classList.remove('active'); // Close other panels
+            });
+        }
 
         // Helper function to create bounds from GPS data
         function getBoundsFromGPSData(gpsData) {
@@ -1885,7 +1953,8 @@
                 clusterVisualization: options.clusterVisualization !== undefined ? options.clusterVisualization : clusterVisualization,
                 clusterThreshold: options.clusterThreshold !== undefined ? options.clusterThreshold : clusterThreshold,
                 currentTimeIndex: options.currentTimeIndex !== undefined ? options.currentTimeIndex : window.map.currentTimeIndex,
-                followDot: followDot
+                followDot: followDot,
+                isZooming: window.map.isZooming  // Pass zooming state
             };
             
             // Create path layer for lines connecting GPS points
@@ -1934,9 +2003,6 @@
                     // Interpolate between points
                     const fraction = currentIdx - lowerIdx;
                     
-                    // Use cubic easing for smoother transitions
-                    // Linear interpolation
-                    
                     const p1 = gpsData[lowerIdx];
                     const p2 = gpsData[upperIdx];
                     
@@ -1958,33 +2024,46 @@
             // Calculate pulsing size based on animation state
             // Make the map follow the current position if enabled, not zooming, and if the user is not interacting
             if (window.map.followDot && !window.map.isZooming && window.map.maplibreMap && !window.map.userInteracting) {
-            window.map.maplibreMap.easeTo({
-                center: currentPosition,
-                duration: 50 // Short duration for smooth following
-            });
+                window.map.maplibreMap.easeTo({
+                    center: currentPosition,
+                    duration: 50 // Short duration for smooth following
+                });
             }
 
             const pulseSize = 15 + Math.sin(animationState.pulsePhase * Math.PI * 2) * 5;
             
-            // Create pulsing effect around current position
+            // During zooming operations, simplify the rendering - use conditional rendering
+            const isSimplifiedRendering = settings.isZooming || 
+                                       (window.map.renderingStats.currentFps < 30);
+            
+            // Create pulsing effect around current position - simplified during zooming
             const pulseLayer = new deck.ScatterplotLayer({
                 id: 'pulse-layer',
                 data: [{position: currentPosition}],
                 pickable: false,
-                stroked: true,
+                stroked: isSimplifiedRendering ? false : true,
                 filled: true,
-                opacity: 0.5,
+                opacity: isSimplifiedRendering ? 0.3 : 0.5,  // Lower opacity during zoom
                 radiusScale: 6,
-                radiusMinPixels: pulseSize, // Animated size
-                radiusMaxPixels: 30,
-                lineWidthMinPixels: 1,
+                radiusMinPixels: isSimplifiedRendering ? 10 : pulseSize, // Simpler static size during zoom
+                radiusMaxPixels: isSimplifiedRendering ? 20 : 30,
+                lineWidthMinPixels: isSimplifiedRendering ? 0 : 1,  // No border during zoom
                 getPosition: d => d.position,
-                getFillColor: [255, 107, 0, 80], // Semi-transparent orange
-                getLineColor: [255, 165, 0, 120], // Orange outline
+                getFillColor: [255, 107, 0, isSimplifiedRendering ? 40 : 80], // More transparent during zoom
+                getLineColor: [255, 165, 0, isSimplifiedRendering ? 0 : 120], // No border during zoom
                 parameters: {
                     depthTest: false,
                     blend: true,
                     blendFunc: [770, 771] // Standard alpha blending
+                },
+                updateTriggers: {
+                    stroked: [isSimplifiedRendering],
+                    opacity: [isSimplifiedRendering],
+                    radiusMinPixels: [isSimplifiedRendering ? 10 : pulseSize],
+                    radiusMaxPixels: [isSimplifiedRendering],
+                    lineWidthMinPixels: [isSimplifiedRendering],
+                    getFillColor: [isSimplifiedRendering],
+                    getLineColor: [isSimplifiedRendering]
                 }
             });
             
@@ -1992,19 +2071,26 @@
             const currentPositionLayer = new deck.ScatterplotLayer({
                 id: 'current-position',
                 data: [{position: currentPosition}],
-                pickable: true,
-                stroked: true,
+                pickable: false,  // No picking during animation for performance
+                stroked: isSimplifiedRendering ? false : true,
                 filled: true,
-                opacity: 1.0, // Make it fully visible
+                opacity: 1.0,
                 radiusScale: 6,
-                radiusMinPixels: 8, // Smaller core
+                radiusMinPixels: 8,
                 radiusMaxPixels: 12,
-                lineWidthMinPixels: 2,
+                lineWidthMinPixels: isSimplifiedRendering ? 0 : 2,  // No border during zoom
                 getPosition: d => d.position,
-                getFillColor: [255, 107, 0, 255], // Bright orange core
-                getLineColor: [255, 255, 255, 200], // White border
+                getFillColor: [255, 107, 0, 255],  // Keep the core visible even during zoom
+                getLineColor: isSimplifiedRendering ? [255, 255, 255, 0] : [255, 255, 255, 200],  // No border during zoom
                 parameters: {
-                    depthTest: false
+                    depthTest: false,
+                    blend: true,
+                    blendFunc: [770, 771]  // Use standard alpha blending for better performance
+                },
+                updateTriggers: {
+                    stroked: [isSimplifiedRendering],
+                    lineWidthMinPixels: [isSimplifiedRendering],
+                    getLineColor: [isSimplifiedRendering]
                 }
             });
             
@@ -2425,7 +2511,8 @@
             });
             
             // Add event listener for the Zybooks button
-            document.getElementById('load-zybooks').addEventListener('click', () => {
+            // This loads the Zybooks data when clicked
+            document.getElementById('load-zybooks').addEventListener('click', function() {
                 loadZybooksData();
             });
             
@@ -2442,16 +2529,16 @@
             }
 
             // Sample data points
-            const zybooksData = `0,35.211037,-97.438866
-5,35.222366,-97.45298
-10,35.261436,-97.47378
-15,35.26264,-97.47451
-20,35.26264,-97.47452
-25,35.265636,-97.47737
-30,35.340107,-97.49224
-35,35.41994,-97.48859
-40,35.458927,-97.532814
-45,35.46053,-97.63156`;
+            const zybooksData = `0,35.211037,-97.438866  
+5,35.222366,-97.45298  
+10,35.261436,-97.47378  
+15,35.26264,-97.47451  
+20,35.26264,-97.47452  
+25,35.2585,-97.47  
+30,35.265636,-97.47737  
+35,35.340107,-97.49224  
+40,35.41994,-97.48859  
+45,35.458927,-97.532814`;
             
             // Set the CSV text to the textarea
             document.getElementById('csv-textarea').value = zybooksData;
@@ -2483,10 +2570,19 @@
             // Update timeline slider max value
             updateTimelineSlider(gpsData);
             
+            // Run stop detection for the info panel
+            h1StopDetection(gpsData);
+            h2StopDetection(gpsData);
+            
+            // Update the info panel stats (force update, don't auto-open panel)
+            updateStopDetectionStats(true, true);
+            
             // Check DeckGL state after a short delay
             setTimeout(checkDeckGLState, 250);
             
             showToast(`Loaded ${gpsData.length} points from Zybooks sample`, 'success');
+            
+            return gpsData;
         }
         
         // Load triplog.csv data
@@ -2731,6 +2827,11 @@
             
             let lastTime = 0;
             let lastIndex = window.map.currentTimeIndex;
+            let frameSkip = 0;  // Counter for frame skipping during heavy operations
+            
+            // Initialize the frame time tracking for adaptive rendering
+            window.map.renderingStats.lastFrameTimes = [];
+            window.map.renderingStats.currentFps = 60; // Assume good performance to start
             
             // Create/reset any animation state
             if (!window.map.animation) {
@@ -2742,12 +2843,34 @@
                         endValue: 0,
                         startTime: 0,
                         duration: 0
+                    },
+                    // Add prediction data for smoother animations
+                    prediction: {
+                        active: false,
+                        targetTimeIndex: 0,
+                        step: 0
                     }
                 };
             }
             
             function animate(timestamp) {
                 if (!window.map.isPlaying) return;
+                
+                // Track frame times for FPS calculation (for adaptive rendering)
+                if (window.map.renderingStats.lastFrameTimes.length >= 10) {
+                    window.map.renderingStats.lastFrameTimes.shift();
+                }
+                window.map.renderingStats.lastFrameTimes.push(timestamp);
+                
+                // Calculate current FPS if we have enough samples
+                if (window.map.renderingStats.lastFrameTimes.length >= 2) {
+                    const timeElapsed = window.map.renderingStats.lastFrameTimes[window.map.renderingStats.lastFrameTimes.length - 1] - 
+                                      window.map.renderingStats.lastFrameTimes[0];
+                    const frameCount = window.map.renderingStats.lastFrameTimes.length - 1;
+                    if (timeElapsed > 0) {
+                        window.map.renderingStats.currentFps = (frameCount / timeElapsed) * 1000;
+                    }
+                }
                 
                 // Calculate time delta
                 if (!lastTime) lastTime = timestamp;
@@ -2756,16 +2879,59 @@
                 // Update animation state
                 window.map.animation.pulsePhase = (window.map.animation.pulsePhase + delta/1000) % 1;
                 
+                // Implement frame skipping during low performance
+                if (window.map.renderingStats.currentFps <
+                    (window.map.isZooming ? 30 : 60)) {
+                    frameSkip++;
+                    if (frameSkip < 2) { // Skip every other frame during low performance
+                        window.map.animationFrameId = requestAnimationFrame(animate);
+                        return;
+                    }
+                    frameSkip = 0;
+                }
+                
                 // Update only if enough time has passed (for smoother animation)
-                if (delta > 12.5) {  // ~80 fps
+                // Adaptive frame rate: use higher threshold during zooming for performance
+                const frameThreshold = window.map.isZooming ? 16.67 : 6.94; // 60fps during zoom, 144fps normally
+                
+                if (delta > frameThreshold) {
                     lastTime = timestamp;
                     
                     // Advance the time index based on playback speed and delta
                     // This ensures smooth animation regardless of frame rate
                     const increment = (delta / 1000) * window.map.playbackSpeed;
                     
-                    // Apply smooth easing when transitioning between points
-                    let newTimeIndex = window.map.currentTimeIndex + increment;
+                    // Begin position prediction during zoom operations for smoother appearance
+                    if (window.map.isZooming && !window.map.animation.prediction.active) {
+                        // Start prediction mode
+                        window.map.animation.prediction.active = true;
+                        window.map.animation.prediction.targetTimeIndex = 
+                            window.map.currentTimeIndex + (increment * 5); // Predict 5 frames ahead
+                            
+                        // Calculate step size for smooth transition to predicted point
+                        const framesNeeded = 5; // Complete in 5 frames
+                        window.map.animation.prediction.step = 
+                            (window.map.animation.prediction.targetTimeIndex - window.map.currentTimeIndex) / framesNeeded;
+                    }
+                    
+                    // Use predicted motion during zoom operations
+                    let newTimeIndex;
+                    if (window.map.isZooming && window.map.animation.prediction.active) {
+                        // Move toward the predicted point faster for smoother appearance
+                        newTimeIndex = window.map.currentTimeIndex + window.map.animation.prediction.step;
+                        
+                        // Check if we've reached our target
+                        if (Math.abs(newTimeIndex - window.map.animation.prediction.targetTimeIndex) < 0.01) {
+                            // Reset prediction and resume normal animation
+                            window.map.animation.prediction.active = false;
+                            
+                            // Update prediction target
+                            window.map.animation.prediction.targetTimeIndex = newTimeIndex + (increment * 5);
+                        }
+                    } else {
+                        // Normal animation - apply smooth easing when transitioning between points
+                        newTimeIndex = window.map.currentTimeIndex + increment;
+                    }
                     
                     // Ensure we don't exceed the data bounds
                     if (newTimeIndex >= window.map.gpsData.length) {
@@ -2796,11 +2962,17 @@
                         updateTimeDisplay(window.map.gpsData, index);
                     }
                     
-                    // Always update the map layers (for smooth interpolation)
-                    updateLayers(window.map.deckgl, window.map.gpsData, { 
-                        currentTimeIndex: window.map.currentTimeIndex, // Use the fractional index for smoother motion
-                        animationState: window.map.animation // Pass animation state for visual effects
-                    });
+                    // Only render the animation if we're not in an intensive zooming operation
+                    // or if we're in prediction mode (which helps smooth zoom animations)
+                    if (!window.map.isZooming || window.map.animation.prediction.active) {
+                        // Use requestAnimationFrame to batch updates
+                        requestAnimationFrame(() => {
+                            updateLayers(window.map.deckgl, window.map.gpsData, { 
+                                currentTimeIndex: window.map.currentTimeIndex, // Use the fractional index for smoother motion
+                                animationState: window.map.animation // Pass animation state for visual effects
+                            });
+                        });
+                    }
                 }
                 
                 window.map.animationFrameId = requestAnimationFrame(animate);
@@ -2873,93 +3045,8 @@
             }
         }
 
-        // Find clusters of points using a HashMap approach
-        function findClusters(gpsData, threshold) {
-            // Initialize result array for clusters
-            const clusters = [];
-            
-            // Create a HashMap to store points and their nearby points
-            const pointsMap = new Map();
-            
-            // Step 1: Build the HashMap of points and their neighbors
-            for (let i = 0; i < gpsData.length; i++) {
-                const pointI = gpsData[i];
-                const nearbyPoints = [];
-                
-                // Find all points within threshold distance
-                for (let j = 0; j < gpsData.length; j++) {
-                    if (i === j) continue; // Skip self
-                    
-                    const pointJ = gpsData[j];
-                    const distance = getDistanceFromLatLonInKm(
-                        pointI.latitude, pointI.longitude,
-                        pointJ.latitude, pointJ.longitude
-                    );
-                    
-                    // If within threshold, add to nearby points
-                    if (distance <= threshold) {
-                        nearbyPoints.push(j);
-                    }
-                }
-                
-                // Store the nearby points in the map
-                pointsMap.set(i, nearbyPoints);
-            }
-            
-            // Step 2: Merge connected points into clusters using BFS
-            const visited = new Set();
-            
-            for (let i = 0; i < gpsData.length; i++) {
-                // Skip if already visited
-                if (visited.has(i)) continue;
-                
-                // Build a cluster using BFS
-                const queue = [i];
-                const clusterPoints = [];
-                
-                // BFS to find all connected points
-                while (queue.length > 0) {
-                    const current = queue.shift();
-                    
-                    // Skip if already visited
-                    if (visited.has(current)) continue;
-                    
-                    // Mark as visited and add to cluster
-                    visited.add(current);
-                    clusterPoints.push(current);
-                    
-                    // Add all neighbors to the queue
-                    const neighbors = pointsMap.get(current) || [];
-                    for (const neighbor of neighbors) {
-                        if (!visited.has(neighbor)) {
-                            queue.push(neighbor);
-                        }
-                    }
-                }
-                
-                // Only consider clusters with at least 3 points (to form a polygon)
-                if (clusterPoints.length >= 3) {
-                    // Extract coordinates for all points in the cluster
-                    const coordinates = clusterPoints.map(idx => [
-                        gpsData[idx].longitude, 
-                        gpsData[idx].latitude
-                    ]);
-                    
-                    // Create an exact convex hull from the coordinates with no padding
-                    const hull = computeConvexHull(coordinates);
-                    
-                    clusters.push({
-                        pointIndices: clusterPoints,
-                        polygon: hull, // Use the exact hull with no padding
-                        size: clusterPoints.length
-                    });
-                }
-            }
-            
-            console.log(`Found ${clusters.length} clusters with the new algorithm`);
-            return clusters;
-        }
         
+
         // Compute the convex hull of a set of points using Graham scan
         function computeConvexHull(points) {
             // First, find the point with the lowest y-coordinate
@@ -3332,8 +3419,11 @@
                 const pointI = gpsData[i];
                 const nearbyPoints = [];
                 
+                const start = Math.max(0, i - 10);
+                const end = Math.min(gpsData.length - 1, i + 10);
+
                 // Find all points within threshold distance
-                for (let j = 0; j < gpsData.length; j++) {
+                for (let j = start; j < end; j++) {
                     if (i === j) continue; // Skip self
                     
                     const pointJ = gpsData[j];
@@ -3461,55 +3551,71 @@
 
         // Revised function to match the h2StopDetection algorithm description
         function h2StopDetection(gpsData, stopRadius = 0.5) {
-            console.log(`Running h2StopDetection with radius: ${stopRadius}km`);
-            
-            if (!gpsData || gpsData.length === 0) {
+            console.log(`Running h2StopDetection with threshold: ${stopRadius} km`);
+
+            if (!gpsData || gpsData.length < 2) {
+                console.log('Insufficient data for h2StopDetection');
                 return { stopPoints: [], movingPoints: [] };
             }
             
-            // Create a proximity map: for each point, store all points within the stop radius
+            // Ensure window.map exists
+            window.map = window.map || {};
+
+            // Create a HashMap to store points and their nearby points
             const proximityMap = new Map();
-            
+
+            // Step 1: Build the HashMap of points and their neighbors
             for (let i = 0; i < gpsData.length; i++) {
                 const pointI = gpsData[i];
                 const nearbyPoints = [];
-                
-                for (let j = 0; j < gpsData.length; j++) {
+
+                // Check a window of 10 points before and after the current point
+                const start = Math.max(0, i - 10);
+                const end = Math.min(gpsData.length - 1, i + 10);
+
+                // Find all points within the stop radius
+                for (let j = start; j < end; j++) {
                     if (i === j) continue; // Skip self
-                    
+
                     const pointJ = gpsData[j];
                     const distance = getDistanceFromLatLonInKm(
                         pointI.latitude, pointI.longitude,
                         pointJ.latitude, pointJ.longitude
                     );
-                    
+
+                    // If within threshold, add to nearby points
                     if (distance <= stopRadius) {
                         nearbyPoints.push(j);
                     }
                 }
-                
+
+                // Store the nearby points in the map
                 proximityMap.set(i, nearbyPoints);
             }
-            
-            // Find connected components (potential stop zones)
+
+            // Step 2: Merge connected points into clusters using BFS
             const visited = new Set();
-            const stopZones = [];
-            
+            const stopClusters = [];
+
             for (let i = 0; i < gpsData.length; i++) {
+                // Skip if already visited
                 if (visited.has(i)) continue;
-                
-                // Start a new potential stop zone
+
+                // Build a cluster using BFS
                 const queue = [i];
-                const zonePoints = [];
-                
+                const clusterPoints = [];
+
+                // BFS to find all connected points
                 while (queue.length > 0) {
                     const current = queue.shift();
-                    
+
+                    // Skip if already visited
                     if (visited.has(current)) continue;
-                    
+
+                    // Mark as visited and add to cluster
                     visited.add(current);
-                    zonePoints.push(current);
-                    
+                    clusterPoints.push(current);
+
                     // Add all neighbors to the queue
                     const neighbors = proximityMap.get(current) || [];
                     for (const neighbor of neighbors) {
@@ -3518,43 +3624,39 @@
                         }
                     }
                 }
-                
-                // Only consider zones with at least 3 points
-                if (zonePoints.length >= 3) {
-                    stopZones.push(zonePoints);
+
+                // Only consider clusters with at least 3 points (to form a polygon)
+                if (clusterPoints.length >= 3) {
+                    // Extract coordinates for all points in the cluster
+                    const coordinates = clusterPoints.map(idx => [
+                        gpsData[idx].longitude,
+                        gpsData[idx].latitude
+                    ]);
+
+
+                    stopClusters.push({
+                        pointIndices: clusterPoints,
+                        size: clusterPoints.length
+                    });
                 }
             }
+
+            console.log(`Found ${stopClusters.length} stop clusters with the new algorithm`);
             
-            // Flatten all stop points into a single array
-            const allStopPointIndices = new Set(stopZones.flat());
+            // Calculate the total number of stop points (sum of all points in all clusters)
+            const stopPointIndices = stopClusters.flatMap(cluster => cluster.pointIndices);
+            const totalStopPoints = stopPointIndices.length;
             
-            // Create moving points (all points minus stop points)
-            const movingPointIndices = [];
-            for (let i = 0; i < gpsData.length; i++) {
-                if (!allStopPointIndices.has(i)) {
-                    movingPointIndices.push(i);
-                }
-            }
+            // Store moving points for visualization
+            window.map.h2MovingTrip = gpsData.filter((_, index) => !stopPointIndices.includes(index));
+            window.map.h2StopPoints = stopPointIndices.map(idx => gpsData[idx]);
             
-            const stopPoints = Array.from(allStopPointIndices).map(idx => ({ 
-                index: idx, 
-                point: gpsData[idx] 
-            }));
+            // Store the count for the UI
+            window.map.h2StopCount = totalStopPoints;
             
-            const movingPoints = movingPointIndices.map(idx => ({
-                index: idx,
-                point: gpsData[idx]
-            }));
+            console.log(`h2StopDetection found ${stopClusters.length} clusters with ${totalStopPoints} total stop points and ${window.map.h2MovingTrip.length} moving points`);
             
-            console.log(`h2StopDetection found ${stopPoints.length} stop points and ${movingPoints.length} moving points`);
-            
-            return {
-                totalStopPoints: stopPoints.length,
-                totalMovingPoints: movingPoints.length,
-                stopZones: stopZones,
-                stopPoints: stopPoints,
-                movingPoints: movingPoints
-            };
+            return totalStopPoints;
         }
 
         /**
@@ -3566,14 +3668,19 @@
          * @param {number} displacementThreshold - Maximum displacement in km to consider as a stop (default: 0.6 km)
          * @return {number} - The number of stop points detected
          */
-        function h1StopDetection(gpsData, displacementThreshold = 0.6) {
-            console.log(`Running h1StopDetection with Haversine and threshold: ${displacementThreshold}km`);
+        function h1StopDetection(gpsData, threshold = 0.6) {
+            console.log(`Running h1StopDetection with Haversine and threshold: ${threshold}km`);
             
             if (!gpsData || gpsData.length < 2) {
                 console.log('Insufficient data for h1StopDetection');
-                window.map.movingTrip = [...gpsData];
+                window.map = window.map || {};
+                window.map.movingTrip = [...(gpsData || [])];
+                window.map.h1StopCount = 0;
                 return 0;
             }
+            
+            // Ensure window.map exists
+            window.map = window.map || {};
             
             // Sort the points by timestamp to ensure chronological order
             const sortedData = [...gpsData].sort((a, b) => a.timestamp - b.timestamp);
@@ -3591,7 +3698,7 @@
                     first = false;
                     window.map.movingTrip.push(point);
                     previousPoint = point;
-                } else if (haversineDistance(previousPoint, point) <= displacementThreshold) {
+                } else if (haversineDistance(previousPoint, point) <= threshold) {
                     count++;
                     continue;
                 } else {
@@ -3605,114 +3712,120 @@
                 !window.map.movingTrip.includes(point)
             );
             
+            // Store the result for future use
+            window.map.h1StopCount = count;
+            
             console.log(`h1StopDetection found ${count} stop points and ${window.map.movingTrip.length} moving points`);
             
             return count;
         }
 
-        // Add this code to analyze and fine-tune h1 with the corrected algorithm
-        document.addEventListener('DOMContentLoaded', function() {
-            // Wait for GPS data to be loaded before analyzing
-            const analyzeDataInterval = setInterval(() => {
-                if (window.map && window.map.gpsData && window.map.gpsData.length > 0) {
-                    clearInterval(analyzeDataInterval);
-                    
-                    console.log('====== CORRECTED h1StopDetection (SKIPPING FIRST POINT) ======');
-                    console.log(`Total GPS points: ${window.map.gpsData.length}`);
-                    
-                    // Try the standard threshold first
-                    let h1Result = h1StopDetection(window.map.gpsData, 0.6);
-                    console.log(`Standard h1 (0.6km) finds ${h1Result} stops`);
-                    
-                    // If not matching 226, fine-tune to match target
-                    if (h1Result !== 226) {
-                        for (let threshold = 0.58; threshold <= 0.62; threshold += 0.001) {
-                            h1Result = h1StopDetection(window.map.gpsData, threshold);
-                            if (h1Result === 226) {
-                                console.log(`MATCH FOUND! h1 with threshold ${threshold.toFixed(3)}km gives exactly 226 stops`);
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Store the result for UI usage
-                    window.map.h1StopCount = h1Result;
-                    console.log(`Final h1 stop count: ${window.map.h1StopCount}`);
-                    console.log(`Final h1 moving points: ${window.map.movingTrip.length}`);
-                }
-            }, 1000);
-        });
+        // /**
+        //  * Finds stops in GPS data using the second heuristic (proximity clusters)
+        //  * A stop is defined as a group of 3+ points that are all within a certain distance of each other
+        //  * 
+        //  * @param {Array} gpsData - Array of GPS points with latitude, longitude, and timestamp
+        //  * @param {number} stopRadius - Maximum distance in km to consider points as part of the same stop (default: 0.5 km)
+        //  * @return {Object} - Results including stop points count and movingTrip array
+        //  */
+        // function h2StopDetection(gpsData, stopRadius = 0.5) {
+        //     console.log(`Running h2StopDetection with threshold: ${stopRadius} km`);
 
-        /**
-         * Finds stops in GPS data using the second heuristic (proximity clusters)
-         * A stop is defined as a group of 3+ points that are all within a certain distance of each other
-         * 
-         * @param {Array} gpsData - Array of GPS points with latitude, longitude, and timestamp
-         * @param {number} stopRadius - Maximum distance in km to consider points as part of the same stop (default: 0.5 km)
-         * @return {Object} - Results including stop points count and movingTrip array
-         */
-        function h2StopDetection(gpsData, stopRadius = 0.5) {
-            console.log(`Running h2StopDetection with Haversine and threshold: ${stopRadius}km`);
+        //     if (!gpsData || gpsData.length < 2) {
+        //         console.log('Insufficient data for h2StopDetection');
+        //         return { stopPoints: [], movingPoints: [] };
+        //     }
+
+        //     // Create a HashMap to store points and their nearby points
+        //     const proximityMap = new Map();
+
+        //     // Step 1: Build the HashMap of points and their neighbors
+        //     for (let i = 0; i < gpsData.length; i++) {
+        //         const pointI = gpsData[i];
+        //         const nearbyPoints = [];
+
+        //         // Find all points within the stop radius
+        //         for (let j = 0; j < gpsData.length; j++) {
+        //             if (i === j) continue; // Skip self
+
+        //             const pointJ = gpsData[j];
+        //             const distance = getDistanceFromLatLonInKm(
+        //                 pointI.latitude, pointI.longitude,
+        //                 pointJ.latitude, pointJ.longitude
+        //             );
+
+        //             // If within threshold, add to nearby points
+        //             if (distance <= stopRadius) {
+        //                 nearbyPoints.push(j);
+        //             }
+        //         }
+
+        //         // Store the nearby points in the map
+        //         proximityMap.set(i, nearbyPoints);
+        //     }
+
+        //     // Step 2: Merge connected points into clusters using BFS
+        //     const visited = new Set();
+        //     const stopClusters = [];
+
+        //     for (let i = 0; i < gpsData.length; i++) {
+        //         // Skip if already visited
+        //         if (visited.has(i)) continue;
+
+        //         // Build a cluster using BFS
+        //         const queue = [i];
+        //         const clusterPoints = [];
+
+        //         // BFS to find all connected points
+        //         while (queue.length > 0) {
+        //             const current = queue.shift();
+
+        //             // Skip if already visited
+        //             if (visited.has(current)) continue;
+
+        //             // Mark as visited and add to cluster
+        //             visited.add(current);
+        //             clusterPoints.push(current);
+
+        //             // Add all neighbors to the queue
+        //             const neighbors = proximityMap.get(current) || [];
+        //             for (const neighbor of neighbors) {
+        //                 if (!visited.has(neighbor)) {
+        //                     queue.push(neighbor);
+        //                 }
+        //             }
+        //         }
+
+        //         // Only consider clusters with at least 3 points (to form a polygon)
+        //         if (clusterPoints.length >= 3) {
+        //             // Extract coordinates for all points in the cluster
+        //             const coordinates = clusterPoints.map(idx => [
+        //                 gpsData[idx].longitude,
+        //                 gpsData[idx].latitude
+        //             ]);
+
+        //             // Create an exact convex hull from the coordinates with no padding
+        //             const hull = computeConvexHull(coordinates);
+
+        //             stopClusters.push({
+        //                 pointIndices: clusterPoints,
+        //                 polygon: hull, // Use the exact hull with no padding
+        //                 size: clusterPoints.length
+        //             });
+        //         }
+        //     }
+
+        //     console.log(`Found ${stopClusters.length} stop clusters with the new algorithm`);
             
-            if (!gpsData || gpsData.length < 2) {
-                console.log('Insufficient data for h2StopDetection');
-                window.map.h2MovingTrip = [...gpsData];
-                return 0;
-            }
-            
-            // Sort the points by timestamp to ensure chronological order
-            const sortedData = [...gpsData].sort((a, b) => a.timestamp - b.timestamp);
-            
-            window.map.h2MovingTrip = [];
-            let previousPoint = sortedData[0];
-            let stops = 0;
-            let currentStreak = [];
-            
-            // Direct port of the Java algorithm
-            for (let i = 0; i < sortedData.length; i++) {
-                const point = sortedData[i];
-                
-                if (haversineDistance(previousPoint, point) <= stopRadius) {
-                    currentStreak.push(point);
-                } else {
-                    // Streak is broken
-                    if (currentStreak.length >= 3) {
-                        // It was a stop, count it but don't add points to movingTrip
-                        stops += currentStreak.length;
-                    } else {
-                        // Wasn't a stop, add all points from the streak to movingTrip
-                        for (const streakPoint of currentStreak) {
-                            window.map.h2MovingTrip.push(streakPoint);
-                        }
-                    }
-                    // Start new streak with current point
-                    currentStreak = [point];
-                }
-                
-                previousPoint = point;
-            }
-            
-            // Handle the final streak
-            if (currentStreak.length >= 3) {
-                stops += currentStreak.length;
-            } else {
-                // Add remaining points if not a stop
-                for (const point of currentStreak) {
-                    if (!window.map.h2MovingTrip.includes(point)) {
-                        window.map.h2MovingTrip.push(point);
-                    }
-                }
-            }
-            
-            // For debugging and visualization
-            window.map.h2StopPoints = sortedData.filter(point => 
-                !window.map.h2MovingTrip.includes(point)
-            );
-            
-            console.log(`h2StopDetection found ${stops} stop points and ${window.map.h2MovingTrip.length} moving points`);
-            
-            return stops;
-        }
+        //     // Prepare the output
+        //     const stopPoints = stopClusters.flatMap(cluster => cluster.pointIndices);
+        //     const movingPoints = gpsData.filter((_, index) => !stopPoints.includes(index));
+
+        //     return {
+        //         stopPoints: stopPoints.map(idx => gpsData[idx]),
+        //         movingPoints: movingPoints
+        //     };
+        // }
 
         // Add this code to analyze and compare both heuristics with fine-tuned thresholds
         document.addEventListener('DOMContentLoaded', function() {
@@ -3846,30 +3959,6 @@
             }
             
             return clusters;
-        }
-
-        // Instead, add a function that can be called when needed:
-        /**
-         * Updates the visualization using h2 stop detection results
-         * Call this function when you want to visualize the h2 clusters
-         */
-        function updateVisualizationWithH2Clusters() {
-            if (!window.map || !window.map.gpsData || window.map.gpsData.length === 0) {
-                console.log('No GPS data available for visualization');
-                return;
-            }
-            
-            // Make sure h2 stop detection has been run
-            if (!window.map.h2StopPoints || window.map.h2StopPoints.length === 0) {
-                h2StopDetection(window.map.gpsData, 0.51);
-            }
-            
-            // Generate clusters from h2 stops
-            const clusters = updateClustersFromH2Stops();
-            console.log(`Visualization updated with ${clusters.length} clusters from h2 stop detection`);
-            
-            // You can call your existing visualization code here, passing the clusters
-            // For example: updateLayers(deckOverlay, window.map.gpsData, { clusterVisualization: true, clusters: clusters });
         }
 
         /**
@@ -4007,79 +4096,119 @@
             return count;
         }
 
-        /**
-         * Safe implementation of h2StopDetection that handles edge cases
-         */
-        function h2StopDetection(gpsData, threshold = 0.51) {
-            console.log(`Running h2StopDetection with Haversine and threshold: ${threshold}km`);
+        // /**
+        //  * Safe implementation of h2StopDetection that handles edge cases
+        //  */
+        // function h2StopDetection(gpsData, threshold = 0.5) {
+        //     console.log(`Running h2StopDetection with Haversine and threshold: ${threshold}km`);
             
-            if (!gpsData || gpsData.length < 2) {
-                console.log('Insufficient data for h2StopDetection');
-                window.map = window.map || {};
-                window.map.h2MovingTrip = [...(gpsData || [])];
-                window.map.h2StopCount = 0;
-                return 0;
-            }
+        //     if (!gpsData || gpsData.length < 2) {
+        //         console.log('Insufficient data for h2StopDetection');
+        //         window.map = window.map || {};
+        //         window.map.h2MovingTrip = [...(gpsData || [])];
+        //         window.map.h2StopCount = 0;
+        //         return 0;
+        //     }
             
-            // Ensure window.map exists
-            window.map = window.map || {};
+        //     // Ensure window.map exists
+        //     window.map = window.map || {};
             
-            // Sort the points by timestamp to ensure chronological order
-            const sortedData = [...gpsData].sort((a, b) => a.timestamp - b.timestamp);
+        //     // Create a HashMap to store points and their nearby points
+        //     const proximityMap = new Map();
+
+        //     // Step 1: Build the HashMap of points and their neighbors
+        //     for (let i = 0; i < gpsData.length; i++) {
+        //         const pointI = gpsData[i];
+        //         const nearbyPoints = [];
+
+        //         // Find all points within the stop radius
+        //         for (let j = 0; j < gpsData.length; j++) {
+        //             if (i === j) continue; // Skip self
+
+        //             const pointJ = gpsData[j];
+        //             const distance = getDistanceFromLatLonInKm(
+        //                 pointI.latitude, pointI.longitude,
+        //                 pointJ.latitude, pointJ.longitude
+        //             );
+
+        //             // If within threshold, add to nearby points
+        //             if (distance <= threshold) {
+        //                 nearbyPoints.push(j);
+        //             }
+        //         }
+
+        //         // Store the nearby points in the map
+        //         proximityMap.set(i, nearbyPoints);
+        //     }
+
+        //     // Step 2: Merge connected points into clusters using BFS
+        //     const visited = new Set();
+        //     const stopClusters = [];
+
+        //     for (let i = 0; i < gpsData.length; i++) {
+        //         // Skip if already visited
+        //         if (visited.has(i)) continue;
+
+        //         // Build a cluster using BFS
+        //         const queue = [i];
+        //         const clusterPoints = [];
+
+        //         // BFS to find all connected points
+        //         while (queue.length > 0) {
+        //             const current = queue.shift();
+
+        //             // Skip if already visited
+        //             if (visited.has(current)) continue;
+
+        //             // Mark as visited and add to cluster
+        //             visited.add(current);
+        //             clusterPoints.push(current);
+
+        //             // Add all neighbors to the queue
+        //             const neighbors = proximityMap.get(current) || [];
+        //             for (const neighbor of neighbors) {
+        //                 if (!visited.has(neighbor)) {
+        //                     queue.push(neighbor);
+        //                 }
+        //             }
+        //         }
+
+        //         // Only consider clusters with at least 3 points (to form a polygon)
+        //         if (clusterPoints.length >= 3) {
+        //             // Extract coordinates for all points in the cluster
+        //             const coordinates = clusterPoints.map(idx => [
+        //                 gpsData[idx].longitude,
+        //                 gpsData[idx].latitude
+        //             ]);
+
+        //             // Create an exact convex hull from the coordinates with no padding
+        //             const hull = computeConvexHull(coordinates);
+
+        //             stopClusters.push({
+        //                 pointIndices: clusterPoints,
+        //                 polygon: hull, // Use the exact hull with no padding
+        //                 size: clusterPoints.length
+        //             });
+        //         }
+        //     }
             
-            window.map.h2MovingTrip = [];
-            let previousPoint = sortedData[0];
-            let stops = 0;
-            let currentStreak = [];
+        //     // Calculate the total number of stop points (sum of all points in all clusters)
+        //     const totalStopPoints = stopClusters.reduce((total, cluster) => total + cluster.pointIndices.length, 0);
             
-            // Direct port of the Java algorithm
-            for (let i = 0; i < sortedData.length; i++) {
-                const point = sortedData[i];
-                
-                if (haversineDistance(previousPoint, point) <= threshold) {
-                    currentStreak.push(point);
-                } else {
-                    // Streak is broken
-                    if (currentStreak.length >= 3) {
-                        // It was a stop, count it but don't add points to movingTrip
-                        stops += currentStreak.length;
-                    } else {
-                        // Wasn't a stop, add all points from the streak to movingTrip
-                        for (const streakPoint of currentStreak) {
-                            window.map.h2MovingTrip.push(streakPoint);
-                        }
-                    }
-                    // Start new streak with current point
-                    currentStreak = [point];
-                }
-                
-                previousPoint = point;
-            }
+        //     // Prepare the moving points (all points not in any cluster)
+        //     const allStopPointIndices = stopClusters.flatMap(cluster => cluster.pointIndices);
+        //     window.map.h2MovingTrip = gpsData.filter((_, index) => !allStopPointIndices.includes(index));
             
-            // Handle the final streak
-            if (currentStreak.length >= 3) {
-                stops += currentStreak.length;
-            } else {
-                // Add remaining points if not a stop
-                for (const point of currentStreak) {
-                    if (!window.map.h2MovingTrip.includes(point)) {
-                        window.map.h2MovingTrip.push(point);
-                    }
-                }
-            }
+        //     // For debugging and visualization
+        //     window.map.h2StopPoints = allStopPointIndices.map(idx => gpsData[idx]);
             
-            // For debugging and visualization
-            window.map.h2StopPoints = sortedData.filter(point => 
-                !window.map.h2MovingTrip.includes(point)
-            );
+        //     // Store the result for future use
+        //     window.map.h2StopCount = totalStopPoints;
             
-            // Store the result for future use
-            window.map.h2StopCount = stops;
+        //     console.log(`h2StopDetection found ${stopClusters.length} clusters with ${totalStopPoints} total stop points and ${window.map.h2MovingTrip.length} moving points`);
             
-            console.log(`h2StopDetection found ${stops} stop points and ${window.map.h2MovingTrip.length} moving points`);
-            
-            return stops;
-        }
+        //     return totalStopPoints;
+        // }
 
         // Improved DOMContentLoaded handler with error handling
         document.addEventListener('DOMContentLoaded', function() {
@@ -4545,7 +4674,10 @@
                 console.log('Update already in progress, skipping');
                 return;
             }
+            
+            // Set flag and record the start time
             infoUpdateInProgress = true;
+            lastUpdateTime = Date.now();
             console.log('Stop detection stats update started');
             window.map = window.map || {};
 
@@ -4610,45 +4742,20 @@
                     document.getElementById('h1-total-distance').textContent = totalTripDistance.toFixed(2);
                 }
                 
-                // Add a summary of distance statistics for clarity
-                if (!document.getElementById('distance-summary-row')) {
-                    const summaryRow = document.createElement('tr');
-                    summaryRow.id = 'distance-summary-row';
-                    summaryRow.style.backgroundColor = '#f8f9fa';
-                    summaryRow.style.fontWeight = 'bold';
-                    summaryRow.innerHTML = `
-                        <td>Distance Summary</td>
-                        <td colspan="2">Total: ${totalTripDistance.toFixed(2)} km</td>
-                    `;
-                    
-                    const detailsRow1 = document.createElement('tr');
-                    detailsRow1.id = 'distance-details-h1';
-                    detailsRow1.style.backgroundColor = '#f8f9fa';
-                    detailsRow1.innerHTML = `
-                        <td></td>
-                        <td colspan="2">h1 Moving: ${h1Stats.movingDistance.toFixed(2)} km (${Math.round(h1Stats.movingDistance/totalTripDistance*100)}% of total)</td>
-                    `;
-                    
-                    const detailsRow2 = document.createElement('tr');
-                    detailsRow2.id = 'distance-details-h2';
-                    detailsRow2.style.backgroundColor = '#f8f9fa';
-                    detailsRow2.innerHTML = `
-                        <td></td>
-                        <td colspan="2">h2 Moving: ${h2Stats.movingDistance.toFixed(2)} km (${Math.round(h2Stats.movingDistance/totalTripDistance*100)}% of total)</td>
-                    `;
-                    
-                    // Add rows at the bottom of the table
-                    tableBody.appendChild(summaryRow);
-                    tableBody.appendChild(detailsRow1);
-                    tableBody.appendChild(detailsRow2);
-                } else {
-                    // Update existing summary rows
-                    document.getElementById('distance-summary-row').querySelector('td:nth-child(2)').textContent = 
-                        `Total: ${totalTripDistance.toFixed(2)} km`;
-                    document.getElementById('distance-details-h1').querySelector('td:nth-child(2)').textContent = 
-                        `h1 Moving: ${h1Stats.movingDistance.toFixed(2)} km (${Math.round(h1Stats.movingDistance/totalTripDistance*100)}% of total)`;
-                    document.getElementById('distance-details-h2').querySelector('td:nth-child(2)').textContent = 
-                        `h2 Moving: ${h2Stats.movingDistance.toFixed(2)} km (${Math.round(h2Stats.movingDistance/totalTripDistance*100)}% of total)`;
+                // Remove any existing distance summary rows if they exist
+                const existingSummaryRow = document.getElementById('distance-summary-row');
+                if (existingSummaryRow) {
+                    existingSummaryRow.remove();
+                }
+                
+                const existingDetailsRow1 = document.getElementById('distance-details-h1');
+                if (existingDetailsRow1) {
+                    existingDetailsRow1.remove();
+                }
+                
+                const existingDetailsRow2 = document.getElementById('distance-details-h2');
+                if (existingDetailsRow2) {
+                    existingDetailsRow2.remove();
                 }
 
                 // Check if we need to add total distance to the separate view
@@ -4668,20 +4775,6 @@
                     document.getElementById('h1-total-distance-sep').textContent = totalTripDistance.toFixed(2) + ' km';
                 }
                 
-                // Add percentage to h1 moving distance
-                const h1MovingDistanceLabel = h1Column.querySelector('.stat-row:nth-child(4) .stat-label');
-                if (h1MovingDistanceLabel && h1MovingDistanceLabel.textContent === 'Moving Distance:') {
-                    const percentText = document.createElement('span');
-                    percentText.style.fontSize = '0.8em';
-                    percentText.style.color = '#666';
-                    percentText.textContent = ` (${Math.round(h1Stats.movingDistance/totalTripDistance*100)}%)`;
-                    
-                    if (!h1MovingDistanceLabel.querySelector('span')) {
-                        h1MovingDistanceLabel.appendChild(percentText);
-                    } else {
-                        h1MovingDistanceLabel.querySelector('span').textContent = ` (${Math.round(h1Stats.movingDistance/totalTripDistance*100)}%)`;
-                    }
-                }
 
                 // Update h2 column
                 if (!document.getElementById('h2-total-distance-sep')) {
@@ -4737,11 +4830,12 @@
                     }, 300);
                 });
             } else {
-                // Release the lock immediately when skipping panel open
+                // Always release the lock, even in skipPanelOpen mode
+                // This is important to ensure the lock is always released
                 setTimeout(() => {
                     infoUpdateInProgress = false;
-                    console.log('Stop detection stats update completed (skipped panel open)');
-                }, 100);
+                    console.log('Stop detection stats update completed (skip panel mode)');
+                }, 300);
             }
         }
 
@@ -4845,14 +4939,34 @@
         // When the data is loaded via the buttons, also update the info panel
         // Use debouncing to prevent multiple rapid calls
         const debouncedUpdate = debounce(() => {
-            if (!infoUpdateInProgress) {
-                updateStopDetectionStats();
+            // First make sure data is loaded and processed 
+            if (window.map && window.map.gpsData && window.map.gpsData.length > 0) {
+                // Force the update and open the info panel (false skips skipPanelOpen, true forces update)
+                updateStopDetectionStats(false, true);
             }
         }, 1000);
 
-        document.getElementById('plot-button').addEventListener('click', debouncedUpdate);
-        document.getElementById('load-zybooks').addEventListener('click', debouncedUpdate);
-        document.getElementById('load-triplog').addEventListener('click', debouncedUpdate);
+        // Remove previous event listeners if they exist (to avoid duplicates)
+        function safeAddEventListener(id, event, handler) {
+            const element = document.getElementById(id);
+            if (element) {
+                // Instead of cloning and replacing (which breaks functionality),
+                // we'll just add our event handler
+                element.addEventListener(event, handler);
+            }
+        }
+
+        // Set up event listeners that update the info panel without replacing the original functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            safeAddEventListener('plot-button', 'click', debouncedUpdate);
+            safeAddEventListener('load-zybooks', 'click', debouncedUpdate);
+            safeAddEventListener('load-triplog', 'click', debouncedUpdate);
+        });
+
+        // Also add the listeners now (in case the DOM is already loaded)
+        safeAddEventListener('plot-button', 'click', debouncedUpdate);
+        safeAddEventListener('load-zybooks', 'click', debouncedUpdate);
+        safeAddEventListener('load-triplog', 'click', debouncedUpdate);
 
         // 1. Remove h1/h2 stats from journey summary (if they exist)
         function cleanupJourneySummary() {

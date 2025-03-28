@@ -1,12 +1,66 @@
 {
-  "name": "tripgang",
+  "name": "smexy-map",
   "version": "1.0.0",
-  "description": "GPS visualization with Three.js and Leaflet",
-  "main": "server.js",
+  "description": "GPS Visualization Tool with Deck.GL",
+  "main": "main.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "electron .",
+    "dev": "NODE_ENV=development electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --macos --windows",
+    "dist:mac": "electron-builder --macos",
+    "dist:win": "electron-builder --windows"
   },
-  "dependencies": {
-    "express": "^4.18.2"
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "canvas": "^2.11.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.6.4",
+    "electron-reload": "^2.0.0-alpha.1"
+  },
+  "build": {
+    "appId": "com.smexymap.app",
+    "productName": "SmexyMap",
+    "files": [
+      "main.js",
+      "public/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg"
+      ],
+      "icon": "public/assets/favicon/web-app-manifest-512x512.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "public/assets/favicon/web-app-manifest-512x512.png"
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "electronDownload": {
+      "strictSSL": false
+    },
+    "asar": true,
+    "forceCodeSigning": false,
+    "artifactName": "${productName}-${version}-${os}.${ext}",
+    "directories": {
+      "output": "dist"
+    }
   }
-} 
+}

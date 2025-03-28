@@ -236,7 +236,7 @@ public class TripPoint {
 	 * @param   filename   --> name of the file being read "triplog.csv"
 	 * @throws Exception 
 	 */
-	public static void readFile(String filename) throws Exception {
+	public static void readFile(String filename) throws IOException, FileNotFoundException {
 		try {
 			File fileFound = new File(filename);
 			FileReader fileBeingRead = new FileReader(fileFound);
@@ -351,5 +351,114 @@ public class TripPoint {
     	TripPoint.readFile("triplog.csv");
     	System.out.println(h1StopDetection());
     	System.out.println(h2StopDetection());
+    	System.out.println(haversineDistance(32.823532,-106.271736,32.82357,-106.271736));
+    	// Print all stats for testing
+    	printTripStats();
+    }
+    
+    /**
+     * Calculates the haversine distance between two sets of coordinates
+     * Implementation that takes double parameters directly for coordinates
+     * 
+     * @param lata - Latitude of first point
+     * @param lona - Longitude of first point
+     * @param latb - Latitude of second point
+     * @param lonb - Longitude of second point
+     * @return - Distance in kilometers
+     */
+    private static double haversineDistance(double lata, double lona, double latb, double lonb) {
+        double latA = Math.toRadians(lata);
+        double latB = Math.toRadians(latb);
+        double deltaLat = latB - latA;
+        double deltaLon = Math.toRadians(lonb - lona);
+        
+        double haversineLat = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2);
+        double haversineLon = Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
+        
+        double internalDistance = haversineLat + Math.cos(latA) * Math.cos(latB) * haversineLon;
+        
+        double radiusOfEarth = 6371.0; //in km
+        
+        double distance = 2 * radiusOfEarth * Math.asin(Math.sqrt(internalDistance));
+        
+        return distance;
+    }
+
+	/**
+     * Prints all trip statistics in a format suitable for JUnit tests.
+     * Includes stop counts, moving points counts, distances, and times for both h1 and h2 methods.
+     */
+    public static void printTripStats() {
+        System.out.println("===== TRIP STATISTICS =====");
+        System.out.println("Total points: " + trip.size());
+        
+        // --- Run h1 and get its stats ---
+        int h1Stops = h1StopDetection();
+        // Save a copy of the movingTrip after h1
+        ArrayList<TripPoint> h1MovingTripCopy = new ArrayList<>(movingTrip);
+        
+        // Calculate h1 stats
+        double h1MovingDistance = calculateTotalDistance(h1MovingTripCopy);
+        double h1MovingTime = calculateMovingTime(h1MovingTripCopy);
+        double h1StoppedTime = totalTime() - h1MovingTime;
+        double h1AvgSpeed = h1MovingDistance / h1MovingTime;
+        
+        // --- Run h2 and get its stats ---
+        int h2Stops = h2StopDetection();
+        // Save a copy of the movingTrip after h2
+        ArrayList<TripPoint> h2MovingTripCopy = new ArrayList<>(movingTrip);
+        
+        // Calculate h2 stats
+        double h2MovingDistance = calculateTotalDistance(h2MovingTripCopy);
+        double h2MovingTime = calculateMovingTime(h2MovingTripCopy);
+        double h2StoppedTime = totalTime() - h2MovingTime;
+        double h2AvgSpeed = h2MovingDistance / h2MovingTime;
+        
+        // Print h1 stats
+        System.out.println("\n----- h1 Stats (Displacement) -----");
+        System.out.println("h1 Stop Points: " + h1Stops);
+        System.out.println("h1 Moving Points: " + h1MovingTripCopy.size());
+        System.out.println("h1 Moving Distance (km): " + String.format("%.2f", h1MovingDistance));
+        System.out.println("h1 Moving Time (hr): " + String.format("%.2f", h1MovingTime));
+        System.out.println("h1 Stopped Time (hr): " + String.format("%.2f", h1StoppedTime));
+        System.out.println("h1 Average Moving Speed (km/hr): " + String.format("%.2f", h1AvgSpeed));
+        
+        // Print h2 stats
+        System.out.println("\n----- h2 Stats (Proximity) -----");
+        System.out.println("h2 Stop Points: " + h2Stops);
+        System.out.println("h2 Moving Points: " + h2MovingTripCopy.size());
+        System.out.println("h2 Moving Distance (km): " + String.format("%.2f", h2MovingDistance));
+        System.out.println("h2 Moving Time (hr): " + String.format("%.2f", h2MovingTime));
+        System.out.println("h2 Stopped Time (hr): " + String.format("%.2f", h2StoppedTime));
+        System.out.println("h2 Average Moving Speed (km/hr): " + String.format("%.2f", h2AvgSpeed));
+        
+        System.out.println("\n===== END STATISTICS =====");
+    }
+    
+    /**
+     * Helper method to calculate total distance for a specific trip array
+     */
+    private static double calculateTotalDistance(ArrayList<TripPoint> tripArray) {
+        double totalDistance = 0;
+        TripPoint previousPoint = null;
+        
+        for(TripPoint tp: tripArray) {
+            if(previousPoint == null) {
+                previousPoint = tp;
+                continue;
+            }
+            totalDistance += haversineDistance(previousPoint, tp);
+            previousPoint = tp;
+        }
+        
+        return totalDistance;
+    }
+    
+    /**
+     * Helper method to calculate moving time for a specific trip array
+     */
+    private static double calculateMovingTime(ArrayList<TripPoint> tripArray) {
+        // Each point represents 5 minutes, but first point doesn't count as "movement"
+        return ((tripArray.size() - 1) * 5) / 60.0;
     }
 }
